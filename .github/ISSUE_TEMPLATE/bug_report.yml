@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible issue with EduBoard IDE
+title: "[Bug] "
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem and expected behavior.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: main / commit SHA / release
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, board model, FQBN and CLI version (if relevant)
+      placeholder: Windows 11, ESP32 Dev Module, esp32:esp32:esp32
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (remove private data and secrets)
+      render: shell

@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest a teaching feature, board adapter or developer improvement
+title: "[Feature] "
+body:
+  - type: textarea
+    id: learning-goal
+    attributes:
+      label: What is the learner or teacher trying to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed feature or solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives, affected boards and references

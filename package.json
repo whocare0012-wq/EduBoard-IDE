@@ -1,0 +1,32 @@
+{
+  "name": "eduboard-ide",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Open-source K12 physical computing desktop IDE (early development)",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "build": "electron-vite build"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "electron": "^35.0.0",
+    "electron-vite": "^3.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.2.6"
+  },
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
