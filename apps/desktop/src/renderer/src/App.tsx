@@ -245,9 +245,9 @@ export default function App(): JSX.Element {
     });
   }
 
-  async function generated(state: WorkspaceState, target: ProjectLanguage): Promise<string> {
+  async function generated(state: WorkspaceState, target: ProjectLanguage, allowError = false): Promise<string> {
     const result = (await import('../../shared/blocks/snapshot')).generateFromState(state, target);
-    if (result.error) throw new Error(result.error);
+    if (result.error && !allowError) throw new Error(result.error);
     return result.code;
   }
 
@@ -269,18 +269,18 @@ export default function App(): JSX.Element {
       if (target === 'blocks' ? mode === 'blocks' : mode === 'text' && language === target) return;
       const state = mode === 'blocks' ? blockEditor.current?.snapshot().workspace : workspaceState;
       if (mode === 'blocks' && !state) throw new Error('请等待积木编辑器加载完成。');
-      const nextLanguage = target === 'blocks' ? blockTarget : target;
+      const nextLanguage = target === 'blocks' ? state ? blockTarget : language : target;
       let nextSource: string;
       let nextWorkspace = state;
       if (target === 'blocks') {
         nextWorkspace ||= nextLanguage === 'arduino' ? template.createWorkspace() : microTemplate(template, microBoardId);
-        nextSource = await generated(nextWorkspace, nextLanguage);
+        nextSource = await generated(nextWorkspace, nextLanguage, true);
       } else {
         nextSource = textDrafts[nextLanguage] ?? (state ? await generated(state, nextLanguage) : nextLanguage === 'arduino' ? STARTER : PY_STARTER.replace('Pin(2,', microBoardId === 'esp32c3' ? 'Pin(3,' : 'Pin(2,'));
       }
       if (nextLanguage !== language) await window.eduboard.stopMonitor();
       if (target !== 'blocks' && textDrafts[nextLanguage] === null) setTextDrafts(previous => ({ ...previous, [nextLanguage]: nextSource }));
-      if (nextWorkspace && !workspaceState) setBlockRevision(previous => previous + 1);
+      if (nextWorkspace && !workspaceState) { setBlockRevision(previous => previous + 1); setBlockTarget(nextLanguage); }
       setWorkspaceState(nextWorkspace || null); setLanguage(nextLanguage); setSource(nextSource);
       setMode(target === 'blocks' ? 'blocks' : 'text'); setBlockReady(false); setBlockError(''); setBlockEpoch(previous => previous + 1);
       if (nextLanguage === 'micropython') { if (selectedTemplate === 'sh1106') setSelectedTemplate('led'); await refreshPythonTools(); }

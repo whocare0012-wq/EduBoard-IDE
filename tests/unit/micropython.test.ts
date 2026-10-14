@@ -54,6 +54,8 @@ test('device operations release REPL; flashing uses validated immutable bytes an
   const service = new MicroPythonService(new CommandRunner(), serial, () => ({ executable: process.execPath, args: [fixture, '--fixture-log', log] }), 'bridge-fixture.py', join(root, 'staging'), id => { assert.equal(id, 'esp32'); return board; });
   try {
     const script = join(root, 'main.py'); await writeFile(script, 'print("hello")');
+    await assert.rejects(service.runScript(script, 'COM3', 0), /波特率/);
+    await assert.rejects(readFile(log), { code: 'ENOENT' }, 'Invalid baud must fail before starting device code');
     assert.equal((await service.startRepl('COM3', 115200)).ok, true);
     assert.equal(serial.running, true);
     const listed = await service.list('COM3'); assert.equal(listed.ok, true); assert.equal(listed.files[0].name, 'main.py');

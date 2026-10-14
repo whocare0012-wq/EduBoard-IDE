@@ -43,6 +43,8 @@ Select tools inside the IDE or set `ARDUINO_CLI_PATH`, `ARDUINO_CLI_CONFIG_FILE`
 
 Run `npm run check` for the unified software workflow. Real C++ compiler checks additionally require the installed ESP32 toolchain and sensor libraries. `npm run package:win` builds an unsigned Windows preview; Windows CI retains it as a seven-day Actions artifact. See [release instructions](docs/release.md) and [acceptance evidence](docs/progress.md).
 
+See the [code review](docs/code-review.md) for optimizations after unified acceptance and remaining maintenance opportunities.
+
 ## Repository
 
 ```text

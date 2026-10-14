@@ -43,6 +43,8 @@ npm run dev
 
 运行 `npm run check` 执行统一软件检查。真实 C++ 编译检查还需要已安装的 ESP32 工具链与传感器库。`npm run package:win` 生成未签名 Windows 预览安装包；GitHub Actions 保留七天构建产物。检查证据见 [开发记录](docs/progress.md)，实物项目见 [硬件验收表](docs/hardware-acceptance.md)。
 
+统一检查后的优化结果与后续改进点见 [代码检查记录](docs/code-review.md)。
+
 ## 参与和许可证
 
 欢迎通过 [Issues](https://github.com/whocare0012-wq/EduBoard-IDE/issues) 反馈问题，或贡献开发板适配、积木、示例和文档。提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。

@@ -13,7 +13,8 @@ export default function MicroPythonPane({ boardId, onBoard, port, busy, action, 
   const [files, setFiles] = useState<DeviceFilesResult['files']>([]);
   const [remotePath, setRemotePath] = useState('/main.py');
   const board = microBoard(boardId);
-  useEffect(() => { setFirmware(null); setFiles([]); }, [boardId]);
+  useEffect(() => { setFirmware(null); }, [boardId]);
+  useEffect(() => { setFiles([]); }, [boardId, port]);
   function requirePort(): void { if (!port.trim()) throw new Error('请先选择实际开发板的串口。'); }
   return <>
     <h3>MicroPython 开发板</h3>

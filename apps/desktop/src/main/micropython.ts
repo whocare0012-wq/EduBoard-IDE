@@ -81,10 +81,11 @@ export class MicroPythonService {
 
   async runScript(path: string, address: unknown, baud: unknown): Promise<CommandResult> {
     const port = validatePort(address);
+    const speed = validateBaud(baud);
     await this.serial.stop();
     const result = await this.run(['-m', 'mpremote', 'connect', port, 'run', '--no-follow', path], true);
     if (!result.ok) return result;
-    const repl = await this.startRepl(port, baud);
+    const repl = await this.startRepl(port, speed);
     return repl.ok ? result : { ...result, ok: false, stderr: '脚本可能已经启动，但 REPL 未能重连：' + repl.message };
   }
 

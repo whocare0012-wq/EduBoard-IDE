@@ -69,3 +69,11 @@ Physical upload/serial tests and clean-machine installer validation remain pendi
 - Setup, firmware matrix, offline provisioning, file semantics and project format are documented. All newly installed tools and caches remain below `D:\Software\EduBoard-Tools`.
 
 Physical flashing, device execution/REPL/files, upload/serial and fresh-machine installation remain pending. The software milestone does not declare a stable hardware-validated release.
+
+## Optimization review after unified acceptance
+
+- V0.3 commit `f2f1e9e` passed Windows/Linux CI including preview packaging and packaged mode/Python workflows: [run](https://github.com/whocare0012-wq/EduBoard-IDE/actions/runs/38617464279).
+- [Code review](code-review.md) records the applied loading optimization, early device-argument validation, generation-error repair and port-sensitive file-list state, with further maintenance opportunities.
+- Monaco still includes editor commands, while only C++/Python languages are registered. Renderer assets dropped from 28,585,013 bytes in 97 files to 10,197,043 bytes in 8 files (64.3% smaller).
+- The optimization regression passed through `npm run package:win`: all unified software checks and the NSIS build. The packaged executable separately passed offline desktop editing, three-mode persistence/error repair and Python parsing/firmware cancellation. Development startup also passed.
+- Latest local preview: `release/EduBoard-IDE-0.3.0-alpha.1-Windows-x64-Setup.exe`, 112724656 bytes; SHA-256 `c19b5172eec5511090d1ff0366ebc96c85db0319021f90074ffe5dd6223cf77c`; Authenticode `NotSigned`. No physical hardware operation was performed.
