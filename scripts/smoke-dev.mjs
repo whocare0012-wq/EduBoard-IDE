@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import assert from 'node:assert/strict';
+import { spawn, execFile } from 'node:child_process';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { chromium } from 'playwright';
+
+const temp = await mkdtemp(join(tmpdir(), 'eduboard-dev-'));
+const socket = createServer();
+await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
+const port = socket.address().port;
+await new Promise(resolve => socket.close(resolve));
+const environment = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => value !== undefined && key !== 'ELECTRON_RUN_AS_NODE'));
+const child = spawn(process.execPath, [resolve('node_modules/electron-vite/bin/electron-vite.js'), 'dev', '--remoteDebuggingPort', String(port)], {
+  windowsHide: true, detached: process.platform !== 'win32', stdio: 'pipe',
+  env: { ...environment, EDUBOARD_USER_DATA: join(temp, 'profile'), ARDUINO_CLI_PATH: join(temp, 'missing-cli.exe') }
+});
+let output = '';
+const closed = new Promise(resolve => child.once('close', resolve));
+child.stdout.on('data', chunk => { output = (output + chunk).slice(-40_000); });
+child.stderr.on('data', chunk => { output = (output + chunk).slice(-40_000); });
+let browser;
+try {
+  const endpoint = 'http://127.0.0.1:' + port;
+  const deadline = Date.now() + 60_000;
+  while (true) {
+    if (child.exitCode !== null) throw new Error('Development startup failed: ' + output);
+    try { const response = await fetch(endpoint + '/json/version'); if (response.ok) break; } catch {}
+    if (Date.now() > deadline) throw new Error('Development startup timed out: ' + output);
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  browser = await chromium.connectOverCDP(endpoint);
+  const page = browser.contexts()[0].pages()[0];
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.locator('.monaco-editor').waitFor({ timeout: 90_000 });
+  assert.equal(await page.evaluate(() => typeof window.eduboard.saveSketch), 'function');
+  assert.deepEqual(errors, []);
+  assert.match(page.url(), /^http:\/\/(localhost|127\.0\.0\.1):/);
+  await mkdir(resolve('output/playwright'), { recursive: true });
+  await page.screenshot({ path: resolve('output/playwright/development.png') });
+  console.log('PASS development startup: electron-vite server, isolated preload and local Monaco editor loaded.');
+} catch (error) {
+  console.error('Development output:', output);
+  throw error;
+} finally {
+  if (browser) await browser.close().catch(() => {});
+  if (child.pid && child.exitCode === null) {
+    if (process.platform === 'win32') {
+      await new Promise(resolve => execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, () => resolve()));
+    } else { try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); } }
+  }
+  await Promise.race([closed, new Promise(resolve => setTimeout(resolve, 5000))]);
+  await rm(temp, { recursive: true, force: true, maxRetries: 15, retryDelay: 200 }).catch(error => console.warn('Check profile cleanup:', error.message));
+}

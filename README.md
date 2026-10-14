@@ -33,7 +33,7 @@ Prerequisites: Node.js 22+, npm, and [Arduino CLI](https://docs.arduino.cc/ardui
 ```bash
 git clone https://github.com/whocare0012-wq/EduBoard-IDE.git
 cd EduBoard-IDE
-npm install
+npm ci
 npm run dev
 ```
 
@@ -44,7 +44,7 @@ npm run typecheck
 npm run build
 ```
 
-These instructions describe a **development checkout**, not an end-user installer. No Windows installer is published yet. Passing a build does not prove hardware upload works.
+Run `npm run check` for the software acceptance workflow and `npm run package:win` for an unsigned Windows preview. Windows CI retains the installer as a seven-day Actions artifact. See [release instructions](docs/release.md), [check evidence](docs/progress.md), and [pending physical gates](docs/hardware-acceptance.md). Real Blink compilation has passed; physical upload/serial and clean-machine acceptance remain pending.
 
 ## Project structure
 

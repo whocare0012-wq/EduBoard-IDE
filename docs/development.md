@@ -19,6 +19,10 @@ Arduino CLI must be discoverable as `arduino-cli` on PATH. Alternatively, set `A
 
 ## ESP32 setup
 
+The development acceptance toolchain is Arduino CLI 1.5.1 and `esp32:esp32@3.3.12`. UI tool selections persist locally. The optional maintainer provisioning script stores CLI/core/tools under `D:\Software\EduBoard-Tools`; other users may provision their own paths. Runtime core installation occurs only after the user selects the install action.
+
+To run the real compiler check (it never uploads), set `ARDUINO_CLI_PATH` and optionally `ARDUINO_CLI_CONFIG_FILE`, then run `npm run test:arduino`. Transport-fixture unit checks exercise cancellation, process-tree closure and stale-build rejection but are not hardware tests.
+
 Install the official ESP32 board package with Arduino CLI (requires network access the first time):
 
 ```bash

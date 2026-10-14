@@ -32,3 +32,16 @@ Completed on 2026-10-14 (maintainer timezone: America/New_York):
 - The final production dependency audit and all checks passed again after the DOMPurify override; the audit reported zero vulnerabilities.
 
 Pending: a connected ESP32 and fresh Windows-machine acceptance. This milestone completes software foundation work and does not claim V0.1 hardware completion.
+
+## Arduino tools and Windows preview milestone
+
+- Foundation CI passed for commit `9d4348b` on Windows and Linux: [run](https://github.com/whocare0012-wq/EduBoard-IDE/actions/runs/38596943137).
+- Tool selection and optional CLI YAML configuration persist locally. The UI discovers installed board targets/serial ports and offers an explicit pinned ESP32 core install action.
+- Bounded real-time output, shell-free arguments, cancellation/timeouts, exclusive operation locks and stale-build rejection are implemented. Windows serial shutdown kills the owned process tree and awaits closure before upload.
+- Seven unit checks passed: literal arguments, split UTF-8 output, cancellation, timeout, failed serial startup and compile/upload sequencing. These transport fixtures are not hardware acceptance.
+- Real Arduino CLI 1.5.1 with ESP32 core 3.3.12 compiled Blink through the offline desktop UI: 271672 bytes program storage and 22116 bytes global variables for `esp32:esp32:esp32`. CLI/core/download data live under `D:\Software\EduBoard-Tools`.
+- The 0.1.0-alpha.1 NSIS installer was generated locally (114777621 bytes; SHA-256 `8f31cf17753bdede929fe50ffb7bf2bee35354cc320ee35a41d587d71aad797d`). Authenticode: `NotSigned`. The packaged executable passed the offline desktop workflow.
+- `@electron/get` is overridden to 5.1.0 to remove the older packaging proxy/logging advisory. Full npm audit reports zero vulnerabilities.
+- Development startup passed after binding the local renderer server to `127.0.0.1`, avoiding a Windows localhost address-family mismatch. CI also builds an unsigned preview and saves it as a seven-day Actions artifact.
+
+Physical upload/serial tests and clean-machine installer validation remain pending in [hardware acceptance](hardware-acceptance.md). An unsigned preview is not a stable release.

@@ -26,3 +26,21 @@ jobs:
       - name: Windows desktop workflow
         if: runner.os == 'Windows'
         run: npm run test:desktop
+      - name: Windows development startup
+        if: runner.os == 'Windows'
+        run: npm run test:dev
+      - name: Build unsigned Windows preview
+        if: runner.os == 'Windows'
+        run: npm run package:win
+      - name: Packaged desktop workflow
+        if: runner.os == 'Windows'
+        run: npm run test:desktop
+        env:
+          EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
+      - name: Save preview installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-unsigned-preview
+          path: release/*-Setup.exe
+          retention-days: 7

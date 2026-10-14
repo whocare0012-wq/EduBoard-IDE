@@ -1,0 +1,27 @@
+appId: org.eduboard.ide
+productName: EduBoard IDE
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+  - LICENSE
+  - '!node_modules/**/*'
+extraResources:
+  - from: LICENSE
+    to: LICENSE
+  - from: docs/third-party-licenses.md
+    to: THIRD_PARTY_NOTICES.md
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  artifactName: EduBoard-IDE-${version}-Windows-x64-Setup.${ext}

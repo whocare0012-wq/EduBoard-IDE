@@ -3,16 +3,16 @@
 Progress is tracked in GitHub Issues. Dates below are intentionally not promised.
 
 ## V0.1 — Windows Arduino C++ foundation
-- [ ] Electron / React desktop development startup and CI build pass
+- [x] Electron / React desktop development startup and CI build pass
 - [x] Create, open, save Arduino sketches with valid sketch-folder structure
 - [x] Monaco C++ editing with student-friendly defaults
-- [ ] Detect Arduino CLI and provide actionable setup guidance
-- [ ] Support ESP32 board FQBN, detect available serial ports
-- [ ] Compile and upload a real Blink sketch with Arduino CLI
-- [ ] Serial monitor with selectable baud rate and safe release before uploading
+- [x] Detect Arduino CLI and provide actionable setup guidance
+- [x] Support ESP32 board FQBN, detect available serial ports
+- [ ] Compile and upload a real Blink sketch with Arduino CLI (real compiler passed; physical upload pending)
+- [x] Serial monitor with selectable baud rate and safe release before uploading (transport checks passed; hardware gate remains below)
 - [ ] Real ESP32 hardware acceptance test on Windows 10/11
-- [ ] Windows installer and clean-machine validation
-- [ ] Basic documentation, error handling and security review
+- [ ] Windows installer and clean-machine validation (unsigned preview built and launched; clean-machine gate pending)
+- [x] Basic documentation, error handling and security review
 
 **Definition of Done:** A student on a supported Windows machine can create, compile and upload Blink to a real ESP32, then view serial output without using a second IDE.
 

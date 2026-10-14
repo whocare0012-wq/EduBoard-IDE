@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { contextBridge, ipcRenderer } from 'electron';
-import type { EduBoardApi, Sketch, CommandResult, PortsResult, ActionResult } from '../shared/types';
+import type { EduBoardApi, Sketch, CommandResult, PortsResult, ActionResult, BoardsResult, ToolSettings } from '../shared/types';
 
 const api: EduBoardApi = {
   cliVersion: () => ipcRenderer.invoke('cli:version') as Promise<CommandResult>,
   ports: () => ipcRenderer.invoke('cli:ports') as Promise<PortsResult>,
+  boards: () => ipcRenderer.invoke('cli:boards') as Promise<BoardsResult>,
+  toolSettings: () => ipcRenderer.invoke('tools:get') as Promise<ToolSettings>,
+  chooseTool: (tool) => ipcRenderer.invoke('tools:choose', tool) as Promise<ToolSettings | null>,
+  installEsp32: () => ipcRenderer.invoke('cli:install-esp32') as Promise<CommandResult>,
+  cancelTask: () => ipcRenderer.invoke('task:cancel') as Promise<void>,
+  onTaskOutput: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: string): void => listener(data);
+    ipcRenderer.on('task:output', handler);
+    return () => ipcRenderer.removeListener('task:output', handler);
+  },
   newSketch: () => ipcRenderer.invoke('project:new') as Promise<void>,
   openSketch: () => ipcRenderer.invoke('project:open') as Promise<Sketch | null>,
   saveSketch: (source) => ipcRenderer.invoke('project:save', source) as Promise<Sketch | null>,

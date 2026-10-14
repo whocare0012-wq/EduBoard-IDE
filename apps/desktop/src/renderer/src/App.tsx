@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import type { CommandResult, PortInfo, Sketch } from '../../shared/types';
+import type { BoardInfo, CommandResult, PortInfo, Sketch, ToolSettings } from '../../shared/types';
 import './editor';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -29,8 +29,8 @@ const STARTER = [
 function displayResult(action: string, result: CommandResult): string {
   return [
     '[' + action + '] ' + (result.ok ? '成功' : '失败'),
-    result.stdout.trim(),
-    result.stderr.trim()
+    result.streamed ? '' : result.stdout.trim(),
+    result.streamed && result.ok ? '' : result.stderr.trim()
   ].filter(Boolean).join('\n') + '\n';
 }
 
@@ -43,25 +43,30 @@ export default function App(): JSX.Element {
   const [fqbn, setFqbn] = useState('esp32:esp32:esp32');
   const [port, setPort] = useState('');
   const [ports, setPorts] = useState<PortInfo[]>([]);
+  const [boards, setBoards] = useState<BoardInfo[]>([]);
+  const [tools, setTools] = useState<ToolSettings | null>(null);
   const [baud, setBaud] = useState(115200);
   const [cliStatus, setCliStatus] = useState('检查 Arduino CLI 中...');
   const [consoleText, setConsoleText] = useState('欢迎使用 EduBoard IDE。请先安装 Arduino CLI 和 ESP32 核心。\n');
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [monitoring, setMonitoring] = useState(false);
   const [serialInput, setSerialInput] = useState('');
 
   useEffect(() => {
+    const removeTaskOutput = window.eduboard.onTaskOutput((data) => {
+      setConsoleText((previous) => (previous + data).slice(-60_000));
+    });
     const removeOutput = window.eduboard.onMonitorData((data) => {
       setConsoleText((previous) => (previous + data).slice(-60_000));
     });
     const removeState = window.eduboard.onMonitorState(setMonitoring);
-    void window.eduboard.cliVersion().then((result) => {
-      setCliStatus(result.ok ? result.stdout.trim() : '未检测到 Arduino CLI，请检查安装路径');
-    }).catch((error: unknown) => setCliStatus(String(error)));
+    void refreshToolchain();
     void refreshPorts();
     return () => {
       removeOutput();
       removeState();
+      removeTaskOutput();
     };
   }, []);
 
@@ -93,7 +98,8 @@ export default function App(): JSX.Element {
   }
 
   async function withBusy(task: () => Promise<void>): Promise<void> {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await task();
@@ -101,7 +107,27 @@ export default function App(): JSX.Element {
       append('[错误] ' + String(error));
     } finally {
       setBusy(false);
+      busyRef.current = false;
     }
+  }
+
+  async function refreshToolchain(): Promise<void> {
+    try {
+      setTools(await window.eduboard.toolSettings());
+      const version = await window.eduboard.cliVersion();
+      setCliStatus(version.ok ? version.stdout.trim() : version.stderr.trim());
+      if (!version.ok) { setBoards([]); return; }
+      const result = await window.eduboard.boards();
+      setBoards(result.boards);
+      if (!result.ok) append(displayResult('识别开发板', result));
+    } catch (error) { setCliStatus(String(error)); }
+  }
+
+  async function selectTool(tool: 'arduinoCliPath' | 'arduinoConfigPath'): Promise<void> {
+    await withBusy(async () => {
+      const selected = await window.eduboard.chooseTool(tool);
+      if (selected) { setTools(selected); await refreshToolchain(); await refreshPorts(); }
+    });
   }
 
   async function refreshPorts(): Promise<void> {
@@ -206,6 +232,7 @@ export default function App(): JSX.Element {
           <button disabled={busy} onClick={() => void withBusy(async () => { await save(); })}>保存</button>
           <button className="primary" disabled={busy} onClick={() => void compile()}>编译</button>
           <button className="primary" disabled={busy} onClick={() => void upload()}>编译并上传</button>
+          {busy && <button onClick={() => void window.eduboard.cancelTask().catch(error => append(String(error)))}>取消任务</button>}
         </div>
       </header>
 
@@ -215,7 +242,11 @@ export default function App(): JSX.Element {
           <div className="file">{filePath || '未保存 · Blink.ino'}{dirty ? ' · 有未保存更改' : ''}</div>
           <h3>开发板配置</h3>
           <label htmlFor="fqbn">Arduino FQBN</label>
-          <input id="fqbn" value={fqbn} disabled={busy} onChange={(e) => setFqbn(e.target.value)} />
+          <input id="fqbn" list="installed-boards" value={fqbn} disabled={busy} onChange={(e) => setFqbn(e.target.value)} />
+          <datalist id="installed-boards">
+            {boards.map((board) => <option key={board.fqbn} value={board.fqbn}>{board.name}</option>)}
+          </datalist>
+          <p className="muted small">已安装目标：{boards.length} · 请选择实际板型</p>
           <label htmlFor="port">串口</label>
           <input id="port" value={port} list="available-ports" placeholder="COM3" disabled={busy} onChange={(e) => setPort(e.target.value)} />
           <datalist id="available-ports">
@@ -225,6 +256,21 @@ export default function App(): JSX.Element {
           <p className="muted small">串口数量：{ports.length}（也可以手动输入）</p>
           <h3>工具链状态</h3>
           <p className="muted small">{cliStatus}</p>
+          <details>
+            <summary>工具链设置</summary>
+            <div className="tool-settings">
+              <p className="muted small">Arduino CLI：{tools?.arduinoCliPath || '检查中'}</p>
+              <button disabled={busy} onClick={() => void selectTool('arduinoCliPath')}>选择 Arduino CLI</button>
+              <p className="muted small">配置：{tools?.arduinoConfigPath || '使用 CLI 默认配置'}</p>
+              <button disabled={busy} onClick={() => void selectTool('arduinoConfigPath')}>选择 CLI 配置</button>
+              <button disabled={busy} onClick={() => void withBusy(refreshToolchain)}>刷新开发板</button>
+              <button disabled={busy} onClick={() => void withBusy(async () => {
+                append('[工具链] 联网安装官方 ESP32 核心，可能需要较长时间。');
+                append(displayResult('安装 ESP32 核心', await window.eduboard.installEsp32()));
+                await refreshToolchain();
+              })}>安装 ESP32 核心（联网）</button>
+            </div>
+          </details>
           <h3>使用提醒</h3>
           <p className="muted small">此版本为开源开发预览。上传前请确认已安装对应 ESP32 核心和驱动。</p>
         </aside>

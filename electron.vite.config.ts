@@ -13,7 +13,17 @@ export default defineConfig({
   },
   renderer: {
     root: resolve('apps/desktop/src/renderer'),
-    plugins: [react()],
+    server: { host: '127.0.0.1' },
+    plugins: [react(), {
+      name: 'renderer-csp',
+      transformIndexHtml(html, context) {
+        const dev = Boolean(context.server);
+        const policy = "default-src 'self'; script-src 'self'" + (dev ? " 'unsafe-inline'" : '') +
+          "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'" +
+          (dev ? ' ws://localhost:* ws://127.0.0.1:*' : '') + "; object-src 'none'; base-uri 'none'; frame-src 'none'";
+        return html.replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="' + policy + '">');
+      }
+    }],
     build: { rollupOptions: { input: resolve('apps/desktop/src/renderer/index.html') } }
   }
 });

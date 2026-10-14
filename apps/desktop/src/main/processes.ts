@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
+import type { ActionResult, CommandResult } from '../shared/types';
+
+const MAX_OUTPUT = 2 * 1024 * 1024;
+
+export async function terminateProcess(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+  if (child.pid) {
+    if (process.platform === 'win32') {
+      await new Promise<void>((resolve) => {
+        execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 5000 }, () => resolve());
+      });
+    } else {
+      try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill('SIGTERM'); }
+    }
+  } else child.kill();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([closed, new Promise<void>((_, reject) => {
+      timer = setTimeout(() => {
+        if (process.platform !== 'win32' && child.pid) {
+          try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+        }
+        reject(new Error('无法确认串口/工具进程已关闭，请重启应用后重试。'));
+      }, 5000);
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+export class CommandRunner {
+  private active: ChildProcessWithoutNullStreams | null = null;
+  private cancelRequested = false;
+  get busy(): boolean { return this.active !== null; }
+
+  constructor(private readonly output?: (text: string) => void) {}
+
+  async cancel(): Promise<void> {
+    if (!this.active) return;
+    this.cancelRequested = true;
+    await terminateProcess(this.active);
+  }
+
+  run(executable: string, args: string[], options: { timeout?: number; env?: NodeJS.ProcessEnv; stream?: boolean } = {}): Promise<CommandResult> {
+    if (this.active) return Promise.resolve({ ok: false, stdout: '', stderr: '已有任务正在执行，请等待或取消。' });
+    this.cancelRequested = false;
+    return new Promise((resolve) => {
+      const child = spawn(executable, args, {
+        windowsHide: true, shell: false, stdio: 'pipe', detached: process.platform !== 'win32',
+        env: { ...process.env, ...options.env }
+      });
+      this.active = child;
+      let stdout = '';
+      let stderr = '';
+      let failure = '';
+      let timedOut = false;
+      const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
+      const receive = (kind: 'stdout' | 'stderr', text: string): void => {
+        if (kind === 'stdout') stdout = (stdout + text).slice(-MAX_OUTPUT);
+        else stderr = (stderr + text).slice(-MAX_OUTPUT);
+        if (options.stream) this.output?.(text.slice(-20_000));
+      };
+      child.stdout.on('data', (chunk: Buffer) => receive('stdout', decoders.stdout.write(chunk)));
+      child.stderr.on('data', (chunk: Buffer) => receive('stderr', decoders.stderr.write(chunk)));
+      child.on('error', (error: NodeJS.ErrnoException) => {
+        failure = error.code === 'ENOENT'
+          ? '未找到工具：' + executable + '。请在工具链设置中选择已安装的程序，或按离线部署文档安装。'
+          : error.message;
+      });
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        void terminateProcess(child).catch(error => { failure = String(error); });
+      }, options.timeout ?? 600_000);
+      child.on('close', (code) => {
+        clearTimeout(timeout);
+        receive('stdout', decoders.stdout.end());
+        receive('stderr', decoders.stderr.end());
+        if (this.active === child) this.active = null;
+        const reason = this.cancelRequested ? '任务已取消。' : timedOut ? '任务超时，请检查工具输出。' : failure;
+        resolve({ ok: code === 0 && !reason, stdout, stderr: [stderr, reason].filter(Boolean).join('\n'), cancelled: this.cancelRequested, streamed: Boolean(options.stream) });
+      });
+    });
+  }
+}
+
+export class SerialSession {
+  private child: ChildProcessWithoutNullStreams | null = null;
+  constructor(private readonly output: (text: string) => void, private readonly state: (running: boolean) => void) {}
+  get running(): boolean { return this.child !== null; }
+
+  async stop(): Promise<void> {
+    const child = this.child;
+    if (!child) { this.state(false); return; }
+    await terminateProcess(child);
+    if (this.child === child) { this.child = null; this.state(false); }
+  }
+
+  async start(executable: string, args: string[], env?: NodeJS.ProcessEnv): Promise<ActionResult> {
+    await this.stop();
+    return new Promise((resolve) => {
+      const child = spawn(executable, args, { windowsHide: true, shell: false, stdio: 'pipe', detached: process.platform !== 'win32', env: { ...process.env, ...env } });
+      this.child = child;
+      let settled = false;
+      const finish = (result: ActionResult): void => { if (!settled) { settled = true; resolve(result); } };
+      const decoder = new StringDecoder('utf8');
+      child.stdout.on('data', (chunk: Buffer) => this.output(decoder.write(chunk).slice(-20_000)));
+      child.stderr.on('data', (chunk: Buffer) => this.output(chunk.toString('utf8').slice(-20_000)));
+      const ready = setTimeout(() => {
+        if (this.child === child) { this.state(true); finish({ ok: true, message: '串口连接请求已发出，请查看设备输出。' }); }
+      }, 350);
+      child.on('error', (error) => finish({ ok: false, message: error.message }));
+      child.on('close', (code) => {
+        clearTimeout(ready);
+        this.output(decoder.end());
+        if (this.child === child) { this.child = null; this.state(false); }
+        this.output('[串口已关闭] ' + (code ?? '停止') + '\n');
+        finish({ ok: false, message: '串口未能连接，请检查端口、驱动与工具路径。' });
+      });
+    });
+  }
+
+  async send(text: unknown): Promise<void> {
+    if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 2048) throw new Error('串口发送文本须小于 2048 字节。');
+    const child = this.child;
+    if (!child || child.stdin.destroyed || child.exitCode !== null) throw new Error('串口尚未连接。');
+    await new Promise<void>((resolve, reject) => child.stdin.write(text, error => error ? reject(error) : resolve()));
+  }
+}

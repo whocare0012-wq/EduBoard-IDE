@@ -4,7 +4,7 @@
 
 > 面向中小学编程和创客教育的免费、开源桌面 IDE，计划支持 Arduino C++、Blockly 图形化编程与 MicroPython。
 
-**当前状态：早期开发 / Pre-alpha，尚无经过验证的正式安装包。** 请勿直接用于依赖稳定性的课堂教学。
+**当前状态：开发预览 / Pre-alpha。** 已有可构建的未签名 Windows 预览安装包，真实 ESP32 上传、串口和全新 Windows 机器验收仍待完成。请勿直接用于依赖稳定性的课堂教学。
 
 ## 产品定位
 
@@ -33,7 +33,7 @@ EduBoard IDE 希望让学生从图形化编程逐步过渡到文本编程，并�
 ```bash
 git clone https://github.com/whocare0012-wq/EduBoard-IDE.git
 cd EduBoard-IDE
-npm install
+npm ci
 npm run dev
 ```
 
@@ -44,7 +44,7 @@ npm run typecheck
 npm run build
 ```
 
-目前是源码开发方式，尚未提供面向普通用户的一键安装流程，也没有通过真实硬件测试的正式声明。
+运行 `npm run check` 可重复执行软件验收；`npm run package:win` 会生成未签名预览安装包。GitHub Actions 的 Windows 构建保留七天安装包产物。使用方式见 [中文指南](docs/user-guide.zh-CN.md)，检查证据与待完成项见 [开发记录](docs/progress.md)。软件检查和真实编译已通过，不代表实体硬件验收完成。
 
 ## 参与开源
 
