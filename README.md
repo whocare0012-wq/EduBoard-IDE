@@ -20,7 +20,7 @@ EduBoard IDE is a student-friendly desktop coding environment for K–12 compute
 | Version | Goal | Status |
 | --- | --- | --- |
 | v0.1 | Windows desktop shell, Arduino C++ editor, ESP32 CLI integration, sketch management and serial monitoring | In progress |
-| v0.2 | Blockly blocks and Arduino C++ generation | Planned |
+| v0.2 | Blockly blocks and Arduino C++ generation | Software checks passed; physical examples pending |
 | v0.3 | MicroPython firmware, REPL and file management | Planned |
 | v1.0 | Stable teaching workflows and teacher resources | Planned |
 

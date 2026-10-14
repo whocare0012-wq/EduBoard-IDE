@@ -17,11 +17,11 @@ Progress is tracked in GitHub Issues. Dates below are intentionally not promised
 **Definition of Done:** A student on a supported Windows machine can create, compile and upload Blink to a real ESP32, then view serial output without using a second IDE.
 
 ## V0.2 — Block-based learning
-- [ ] Blockly workspace and save/load project format
-- [ ] GPIO, variable, loop, condition and delay blocks
-- [ ] Arduino C++ code generator
-- [ ] LED, button, DHT11, SH1106 OLED and NeoPixel examples
-- [ ] Make generated code visible without claiming automatic code-to-blocks conversion
+- [x] Blockly workspace and save/load project format
+- [x] GPIO, variable, loop, condition and delay blocks
+- [x] Arduino C++ code generator
+- [x] LED, button, DHT11, SH1106 OLED and NeoPixel examples (real compilation passed; physical behavior pending)
+- [x] Make generated code visible without claiming automatic code-to-blocks conversion
 
 ## V0.3 — MicroPython
 - [ ] Supported board/firmware matrix

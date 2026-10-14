@@ -4,7 +4,8 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { normalizeSketchPath, readSketch, validateSketchName, validateSource, writeSketch } from '../../apps/desktop/src/main/projects';
+import { normalizeProjectPath, normalizeSketchPath, readProject, readSketch, validateSketchName, validateSource, writeProject, writeSketch } from '../../apps/desktop/src/main/projects';
+import { TEMPLATES } from '../../apps/desktop/src/shared/blocks/templates';
 
 test('save creates a valid sketch and reopening preserves Unicode source', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'eduboard-project-'));
@@ -19,6 +20,21 @@ test('save creates a valid sketch and reopening preserves Unicode source', async
     assert.deepEqual(await readdir(dirname(path)), ['Blink.ino']);
     assert.equal(normalizeSketchPath(path), path);
   } finally { await rm(folder, { recursive: true, force: true }); }
+});
+
+test('versioned project preserves blocks, source and target and exports a valid sketch', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'eduboard-format-'));
+  try {
+    const path = normalizeProjectPath(join(temp, 'Blink.json'));
+    const document = { format: 'eduboard-project', version: 1, language: 'arduino', mode: 'blocks', fqbn: 'esp32:esp32:esp32', workspace: TEMPLATES[0].createWorkspace(), source: '// generated\nvoid setup() {}\nvoid loop() {}\n' };
+    const saved = await writeProject(path, document);
+    const reopened = await readProject(path);
+    assert.deepEqual(reopened.document, document);
+    assert.equal(await readFile(saved.filePath, 'utf8'), document.source);
+    assert.deepEqual(await readdir(dirname(path)), ['Blink.eduboard.json', 'Blink.ino']);
+    await assert.rejects(writeProject(path, { ...document, version: 99 }));
+    assert.deepEqual((await readProject(path)).document, document);
+  } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
 test('rejects unsafe names, oversized UTF-8 and invalid Arduino folder structure', async () => {

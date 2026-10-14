@@ -4,12 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { BoardInfo, CommandResult, PortInfo } from '../shared/types';
 import { CommandRunner, SerialSession } from './processes';
+import { FQBN_PATTERN } from '../shared/project-format';
 
 export const ESP32_INDEX_URL = 'https://espressif.github.io/arduino-esp32/package_esp32_index.json';
 export const ESP32_CORE = 'esp32:esp32@3.3.12';
 
 export function validateFqbn(value: unknown): string {
-  if (typeof value !== 'string' || value.length > 240 || !/^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:[A-Za-z0-9_.-]+(?::[A-Za-z0-9_-]+=[A-Za-z0-9_.-]+(?:,[A-Za-z0-9_-]+=[A-Za-z0-9_.-]+)*)?$/.test(value)) {
+  if (typeof value !== 'string' || value.length > 240 || !FQBN_PATTERN.test(value)) {
     throw new Error('无效的开发板 FQBN，请选择已安装的目标。');
   }
   return value;

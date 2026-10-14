@@ -45,3 +45,13 @@ Pending: a connected ESP32 and fresh Windows-machine acceptance. This milestone 
 - Development startup passed after binding the local renderer server to `127.0.0.1`, avoiding a Windows localhost address-family mismatch. CI also builds an unsigned preview and saves it as a seven-day Actions artifact.
 
 Physical upload/serial tests and clean-machine installer validation remain pending in [hardware acceptance](hardware-acceptance.md). An unsigned preview is not a stable release.
+
+## Blockly / V0.2 software milestone
+
+- Previous Arduino/preview CI passed: [run for `75cb155`](https://github.com/whocare0012-wq/EduBoard-IDE/actions/runs/38600919257).
+- Blockly 13.4.0 and its media are local. GPIO, numeric variables, arithmetic, loops, conditions, delays, serial output and sensor/display blocks generate C++ through a dedicated generator.
+- Versioned `.eduboard.json` files preserve layout, source and target, with source companions for Arduino CLI. Legacy `.ino` editing remains supported. Text copies save the original blocks first and do not claim reverse conversion.
+- Twelve unit checks passed, covering file persistence, process safety, Blockly round-trips, numeric division, invalid roots/indices, unsupported formats and bounded mutation state.
+- Real offline desktop checks passed for visible code, field changes, block save/reopen, editable text copies and canceled overwrite. Canvas fitting, readable toolbox colors and editor remounts fix issues found by screenshot inspection.
+- All five generated examples compiled with the real ESP32 3.3.12 toolchain and the pinned sensor libraries. Program/global bytes: LED 271672/22116; button 271564/22116; DHT11 273868/22132; SH1106 306400/23684; NeoPixel 288929/22844. No physical upload was performed.
+- Generated source and project companions live under `examples/Lesson_*`. Wiring, learning goals, dependency versions and format details are documented. Physical sensor behavior remains pending.

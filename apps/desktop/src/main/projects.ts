@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, parse, resolve } from 'node:path';
 import type { Sketch } from '../shared/types';
+import { validateProject, type ProjectDocument } from '../shared/project-format';
 
 export const MAX_SOURCE_BYTES = 1_000_000;
 
@@ -61,4 +62,36 @@ export async function writeSketch(filePath: string, source: unknown): Promise<Sk
   const safeSource = validateSource(source);
   await atomicWrite(filePath, safeSource);
   return { filePath, name: basename(filePath), source: safeSource };
+}
+
+export function normalizeProjectPath(selectedPath: string): string {
+  const name = validateSketchName(basename(selectedPath).replace(/\.eduboard\.json$/i, '').replace(/\.(ino|json|py)$/i, ''));
+  const parent = dirname(resolve(selectedPath));
+  const folder = basename(parent) === name ? parent : join(parent, name);
+  return join(folder, name + '.eduboard.json');
+}
+
+export function projectSourcePath(projectPath: string, language: ProjectDocument['language']): string {
+  const name = basename(projectPath).replace(/\.eduboard\.json$/i, '');
+  validateSketchName(name);
+  if (basename(dirname(projectPath)) !== name) throw new Error('项目文件须放在同名文件夹中，例如 Blink/Blink.eduboard.json。');
+  return join(dirname(projectPath), language === 'arduino' ? name + '.ino' : 'main.py');
+}
+
+export async function readProject(projectPath: string): Promise<Sketch> {
+  const info = await lstat(projectPath);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 4_000_000) throw new Error('项目须为小于 4 MB 的普通文件。');
+  const document = validateProject(JSON.parse(await readFile(projectPath, 'utf8')));
+  return { filePath: projectSourcePath(projectPath, document.language), name: basename(projectPath), source: document.source, document, projectPath };
+}
+
+export async function writeProject(projectPath: string, value: unknown): Promise<Sketch> {
+  const document = validateProject(value);
+  const sourcePath = projectSourcePath(projectPath, document.language);
+  const encoded = JSON.stringify(document, null, 2) + '\n';
+  if (Buffer.byteLength(encoded, 'utf8') > 4_000_000) throw new Error('项目保存文件须小于 4 MB。');
+  // JSON is the authoritative project. Its source is also exported for external compilers.
+  await atomicWrite(sourcePath, document.source);
+  await atomicWrite(projectPath, encoded);
+  return { filePath: sourcePath, name: basename(projectPath), source: document.source, document, projectPath };
 }

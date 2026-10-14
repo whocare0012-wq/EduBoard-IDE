@@ -1,6 +1,6 @@
 {
   "name": "eduboard-ide",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "author": "EduBoard IDE contributors",
   "private": true,
   "description": "Open-source K12 physical computing desktop IDE (early development)",
@@ -14,12 +14,16 @@
     "test:desktop": "node scripts/smoke-desktop.mjs",
     "test:arduino": "node scripts/smoke-arduino.mjs",
     "test:dev": "node scripts/smoke-dev.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run test:desktop",
+    "test:blocks": "node scripts/smoke-blocks.mjs",
+    "test:examples": "node --import tsx scripts/compile-examples.mts",
+    "examples:generate": "node --import tsx scripts/compile-examples.mts --write-examples",
+    "check": "npm run typecheck && npm test && npm run build && npm run test:desktop && npm run test:blocks",
     "package:dir": "npm run build && electron-builder --dir --win --x64 --publish never",
     "package:win": "npm run check && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
+    "blockly": "13.4.0",
     "monaco-editor": "0.57.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"

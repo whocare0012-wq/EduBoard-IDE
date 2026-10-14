@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import type { ProjectDocument } from './project-format';
 export interface CommandResult {
   ok: boolean;
   stdout: string;
@@ -11,6 +12,8 @@ export interface Sketch {
   filePath: string;
   name: string;
   source: string;
+  document?: ProjectDocument;
+  projectPath?: string;
 }
 
 export interface PortInfo {
@@ -43,6 +46,8 @@ export interface EduBoardApi {
   newSketch(): Promise<void>;
   openSketch(): Promise<Sketch | null>;
   saveSketch(source: string): Promise<Sketch | null>;
+  saveProject(document: ProjectDocument): Promise<Sketch | null>;
+  installExampleLibraries(): Promise<CommandResult>;
   compile(fqbn: string): Promise<CommandResult>;
   upload(fqbn: string, port: string): Promise<CommandResult>;
   startMonitor(port: string, baud: number): Promise<ActionResult>;

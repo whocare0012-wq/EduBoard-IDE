@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { lstat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { BoardsResult, CommandResult, PortsResult, Sketch, ToolSettings } from '../shared/types';
-import { normalizeSketchPath, readSketch, validateSource, writeSketch } from './projects';
+import { normalizeProjectPath, normalizeSketchPath, projectSourcePath, readProject, readSketch, validateSource, writeProject, writeSketch } from './projects';
+import { SENSOR_LIBRARIES, validateProject } from '../shared/project-format';
 import { ArduinoService, ESP32_CORE, ESP32_INDEX_URL, parseBoards, parsePorts, validateBaud, validatePort } from './arduino';
 import { CommandRunner, SerialSession } from './processes';
 import { SettingsStore } from './settings';
@@ -12,6 +13,7 @@ app.setName('EduBoard IDE');
 if (process.env.EDUBOARD_USER_DATA) app.setPath('userData', process.env.EDUBOARD_USER_DATA);
 let mainWindow: BrowserWindow | null = null;
 let currentSketchPath: string | null = null;
+let currentProjectPath: string | null = null;
 let operationActive = false;
 const settings = new SettingsStore(join(app.getPath('userData'), 'tools.json'));
 const publish = (channel: string, value: unknown): void => {
@@ -52,6 +54,12 @@ async function readCli(args: string[]): Promise<CommandResult> {
 
 async function saveSketch(source: unknown): Promise<Sketch | null> {
   const safeSource = validateSource(source);
+  if (currentProjectPath) {
+    const existing = await readProject(currentProjectPath);
+    const saved = await writeProject(currentProjectPath, { ...existing.document!, mode: 'text', workspace: null, source: safeSource });
+    arduino.invalidate();
+    return saved;
+  }
   let targetPath = currentSketchPath;
   if (!targetPath) {
     const selection = await dialog.showSaveDialog({
@@ -73,6 +81,29 @@ async function saveSketch(source: unknown): Promise<Sketch | null> {
     }
   }
   const saved = await writeSketch(targetPath, safeSource);
+  currentSketchPath = saved.filePath;
+  arduino.invalidate();
+  return saved;
+}
+
+async function saveProject(value: unknown): Promise<Sketch | null> {
+  const document = validateProject(value);
+  if (document.language !== 'arduino') throw new Error('MicroPython 工作流将在下一阶段启用。');
+  let targetPath = currentProjectPath;
+  if (!targetPath && currentSketchPath) targetPath = join(dirname(currentSketchPath), basename(currentSketchPath, '.ino') + '.eduboard.json');
+  if (!targetPath) {
+    const selected = await dialog.showSaveDialog({ title: '保存 EduBoard 项目', defaultPath: join(app.getPath('documents'), 'Blink.eduboard.json'), filters: [{ name: 'EduBoard Project', extensions: ['json'] }] });
+    if (selected.canceled || !selected.filePath) return null;
+    targetPath = normalizeProjectPath(selected.filePath);
+  }
+  const exists = (path: string): Promise<boolean> => lstat(path).then(() => true, (error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return false; throw error; });
+  const targetSource = projectSourcePath(targetPath, document.language);
+  if (targetPath !== currentProjectPath && (await exists(targetPath) || targetSource !== currentSketchPath && await exists(targetSource))) {
+    const choice = await dialog.showMessageBox({ type: 'warning', title: '覆盖已有项目？', message: targetPath, detail: '是否覆盖已有项目数据及程序？\n' + targetSource, buttons: ['取消', '覆盖'], defaultId: 0, cancelId: 0 });
+    if (choice.response !== 1) return null;
+  }
+  const saved = await writeProject(targetPath, document);
+  currentProjectPath = saved.projectPath!;
   currentSketchPath = saved.filePath;
   arduino.invalidate();
   return saved;
@@ -114,21 +145,32 @@ function registerHandlers(): void {
     if (!index.ok) return index;
     return arduino.run(['core', 'install', ESP32_CORE, '--additional-urls', ESP32_INDEX_URL], true, 1_800_000);
   }));
+  handle('cli:install-example-libraries', () => operation(async () => {
+    await serial.stop();
+    return arduino.run(['lib', 'install', '--no-deps', ...SENSOR_LIBRARIES], true, 900_000);
+  }));
   handle('task:cancel', () => runner.cancel());
-  handle('project:new', () => operation(async () => { currentSketchPath = null; arduino.invalidate(); }));
+  handle('project:new', () => operation(async () => { currentSketchPath = null; currentProjectPath = null; arduino.invalidate(); }));
   handle('project:open', () => operation(async (): Promise<Sketch | null> => {
     const selection = await dialog.showOpenDialog({
-      title: '打开 Arduino 项目 / Open sketch', properties: ['openFile'], filters: [{ name: 'Arduino Sketch', extensions: ['ino'] }]
+      title: '打开 EduBoard 或 Arduino 项目', properties: ['openFile'], filters: [{ name: 'EduBoard / Arduino', extensions: ['json', 'ino'] }]
     });
     if (selection.canceled || !selection.filePaths[0]) return null;
-    const opened = await readSketch(selection.filePaths[0]);
+    const selectedPath = selection.filePaths[0];
+    const opened = selectedPath.toLowerCase().endsWith('.eduboard.json') ? await readProject(selectedPath) : await readSketch(selectedPath);
+    if (opened.document && opened.document.language !== 'arduino') throw new Error('MicroPython 工作流将在下一阶段启用。');
     currentSketchPath = opened.filePath;
+    currentProjectPath = opened.projectPath || null;
     arduino.invalidate();
     return opened;
   }));
   handle('project:save', (source) => operation(() => saveSketch(source)));
+  handle('project:save-document', (document) => operation(() => saveProject(document)));
   handle('cli:compile', (board) => operation(async (): Promise<CommandResult> => {
     if (!currentSketchPath) return { ok: false, stdout: '', stderr: '请先保存项目。' };
+    if (currentProjectPath && (await readProject(currentProjectPath)).source !== (await readSketch(currentSketchPath)).source) {
+      return { ok: false, stdout: '', stderr: '导出的程序与项目文件不一致，请保存项目后重新编译。' };
+    }
     return arduino.compile(currentSketchPath, board);
   }));
   handle('cli:upload', (board, port) => operation(async (): Promise<CommandResult> => {

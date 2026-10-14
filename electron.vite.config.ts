@@ -13,6 +13,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve('apps/desktop/src/renderer'),
+    publicDir: resolve('node_modules/blockly/media'),
     server: { host: '127.0.0.1' },
     plugins: [react(), {
       name: 'renderer-csp',

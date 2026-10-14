@@ -29,6 +29,9 @@ jobs:
       - name: Windows development startup
         if: runner.os == 'Windows'
         run: npm run test:dev
+      - name: Blockly project workflow
+        if: runner.os == 'Windows'
+        run: npm run test:blocks
       - name: Build unsigned Windows preview
         if: runner.os == 'Windows'
         run: npm run package:win
