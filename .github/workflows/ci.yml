@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Install development dependencies
         run: npm ci --no-audit --no-fund
       - name: Type check
@@ -32,12 +35,30 @@ jobs:
       - name: Blockly project workflow
         if: runner.os == 'Windows'
         run: npm run test:blocks
+      - name: Three-mode project workflow
+        if: runner.os == 'Windows'
+        run: npm run test:modes
+      - name: MicroPython software workflow
+        if: runner.os == 'Windows'
+        run: npm run test:python
+      - name: Generated Python syntax
+        run: npm run test:python-examples
       - name: Build unsigned Windows preview
         if: runner.os == 'Windows'
         run: npm run package:win
       - name: Packaged desktop workflow
         if: runner.os == 'Windows'
         run: npm run test:desktop
+        env:
+          EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
+      - name: Packaged three-mode workflow
+        if: runner.os == 'Windows'
+        run: npm run test:modes
+        env:
+          EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
+      - name: Packaged Python workflow
+        if: runner.os == 'Windows'
+        run: npm run test:python
         env:
           EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
       - name: Save preview installer

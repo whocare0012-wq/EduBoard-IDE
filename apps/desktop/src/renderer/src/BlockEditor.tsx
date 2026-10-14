@@ -2,23 +2,23 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as Blockly from 'blockly/core';
 import { registerBlocks, TOOLBOX } from '../../shared/blocks/definitions';
-import { generateArduino, type GeneratedCode } from '../../shared/blocks/arduino-generator';
-import type { WorkspaceState } from '../../shared/project-format';
+import { snapshotWorkspace, type BlockSnapshot } from '../../shared/blocks/snapshot';
+import type { ProjectLanguage, WorkspaceState } from '../../shared/project-format';
 
-export interface BlockSnapshot extends GeneratedCode { workspace: WorkspaceState; error: string; }
+export type { BlockSnapshot } from '../../shared/blocks/snapshot';
 export interface BlockEditorHandle { snapshot(): BlockSnapshot; }
-interface Props { initial: WorkspaceState; disabled: boolean; onUpdate: (snapshot: BlockSnapshot, changed: boolean) => void; }
+interface Props { initial: WorkspaceState; language: ProjectLanguage; disabled: boolean; onUpdate: (snapshot: BlockSnapshot, changed: boolean) => void; }
 
-const BlockEditor = forwardRef<BlockEditorHandle, Props>(function BlockEditor({ initial, disabled, onUpdate }, ref) {
+const BlockEditor = forwardRef<BlockEditorHandle, Props>(function BlockEditor({ initial, language, disabled, onUpdate }, ref) {
   const container = useRef<HTMLDivElement>(null);
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null);
   const listener = useRef(onUpdate);
+  const loadError = useRef('');
   listener.current = onUpdate;
   function snapshot(): BlockSnapshot {
     if (!workspace.current) throw new Error('积木编辑器尚未准备好。');
-    const state = Blockly.serialization.workspaces.save(workspace.current) as WorkspaceState;
-    try { return { ...generateArduino(workspace.current), workspace: state, error: '' }; }
-    catch (error) { return { code: '', warnings: [], libraries: [], workspace: state, error: String(error) }; }
+    if (loadError.current) return { code: '', warnings: [], libraries: [], workspace: initial, error: loadError.current };
+    return snapshotWorkspace(workspace.current, language);
   }
   useImperativeHandle(ref, () => ({ snapshot: () => { Blockly.WidgetDiv.hide(); return snapshot(); } }));
   useEffect(() => {
@@ -37,11 +37,10 @@ const BlockEditor = forwardRef<BlockEditorHandle, Props>(function BlockEditor({ 
     });
     workspace.current = current;
     Blockly.Events.disable();
-    let loadError = '';
     try { Blockly.serialization.workspaces.load(initial, current); }
-    catch (error) { loadError = '积木工作区加载失败，请检查项目格式或从备份恢复：' + String(error); }
+    catch (error) { loadError.current = '积木工作区加载失败，请检查项目格式或从备份恢复：' + String(error); }
     finally { Blockly.Events.enable(); }
-    listener.current(loadError ? { code: '', warnings: [], libraries: [], workspace: initial, error: loadError } : snapshot(), false);
+    listener.current(snapshot(), false);
     const fit = requestAnimationFrame(() => { if (workspace.current === current) { Blockly.svgResize(current); current.zoomToFit(); } });
     const changed = (event: Blockly.Events.Abstract): void => {
       if (!event.isUiEvent && event.type !== Blockly.Events.FINISHED_LOADING) listener.current(snapshot(), true);

@@ -1,25 +1,33 @@
 # EduBoard project format v1
 
-An Arduino project uses `Name/Name.eduboard.json` plus the exported `Name/Name.ino`. The JSON document is authoritative for block layout, language, mode, board target and source. Open the JSON to restore blocks; opening `.ino` directly starts a legacy text workflow. Both workflows remain supported.
+A complete project uses `Name/Name.eduboard.json`. The JSON is authoritative. Saving also exports its active source to `Name/Name.ino` (Arduino) or `Name/main.py` (MicroPython). Open the JSON to restore every workspace; opening a standalone source file uses a legacy text workflow.
 
 ```json
 {
   "format": "eduboard-project",
   "version": 1,
   "language": "arduino",
-  "mode": "blocks",
+  "mode": "text",
   "fqbn": "esp32:esp32:esp32",
-  "source": "// generated code...",
+  "microBoard": "esp32c3",
+  "source": "void setup() {}\nvoid loop() {}\n",
+  "drafts": {
+    "arduino": "void setup() {}\nvoid loop() {}\n",
+    "micropython": "print('hello')\n"
+  },
+  "blockTarget": "micropython",
   "workspace": {"blocks": {"languageVersion": 0, "blocks": []}}
 }
 ```
 
-The workspace uses [Blockly JSON serialization](https://docs.blockly.com/guides/configure/serialization/). Only the application's supported blocks and variable serializer are accepted. Unknown format versions, unsupported block types, dangerous property keys, oversized fields, over 1000 blocks, excessive nesting and excessive conditional mutation counts are rejected. Source is limited to 1 MB, workspace to 2 MB and the final saved document to 4 MB.
+The optional `drafts`, `blockTarget` and `microBoard` fields extend v1 without breaking existing projects. Old projects initialize only their active text buffer. A null draft means the language has not been initialized; an empty string is an intentionally empty buffer. Both draft keys are required when the extension is present. In text mode `source` must equal the active draft; in blocks mode it is generated source and `blockTarget` must match `language`.
 
-`mode: "text"` has a null workspace. `mode: "blocks"` keeps the workspace and regenerates its code. Text editing does not convert arbitrary C++ back into blocks. The “生成文本副本” action first saves the block project, then starts a separate editable text project so the original layout remains on disk.
+Text mode may retain a workspace. Mode switching restores independent content; explicit adoption replaces only the selected text draft after confirmation. Arbitrary C++ or Python is not converted back into blocks. `microBoard` and the Arduino FQBN persist regardless of the active language. Only the active source is exported; inactive drafts remain in JSON.
 
-Numeric variables use C++ doubles. Numeric literal generation preserves floating-point division. GPIO, serial, control flow and sensor statements have dedicated [language generators](https://docs.blockly.com/guides/create-custom-blocks/code-generation/overview/). Unconnected top-level blocks produce a warning. Duplicate program roots, conflicting device settings and invalid NeoPixel indices produce errors and block compilation. An unfinished layout can still be saved for later repair.
+The workspace uses [Blockly JSON serialization](https://docs.blockly.com/guides/configure/serialization/). Only supported blocks and variable serialization are accepted. Unknown versions, unsupported blocks, unsafe keys, oversized fields, more than 1000 blocks, excessive nesting and excessive conditional mutation counts are rejected. Each source/draft is limited to 1 MB, workspace to 2 MB and the final saved document to 4 MB.
 
-Each file is saved by atomic rename. The source export is written first and the authoritative JSON last; a failure is reported and never updates the active project path or marks the UI saved. This is not a filesystem transaction across both files. If interrupted between writes, reopen the JSON and save again to regenerate its source export.
+Numeric variables use C++ doubles or Python numbers. Orphan blocks warn; duplicate roots, conflicting device settings and invalid indices fail generation. An unfinished layout can be saved for repair; generation errors disable compile/run in the UI.
 
-Project documents contain no tool executable paths. Those remain in local application preferences; selecting a project cannot change which host program the IDE executes.
+Each file is saved by atomic rename. The active source export is written first, JSON last. A failure does not update active paths or mark the UI saved. This is not a transaction across both files; if interrupted, reopen JSON and save to restore the source export. Compiler/run handlers reject a source export inconsistent with the JSON.
+
+Documents contain no host executable paths. Tool selections are local application preferences.

@@ -23,9 +23,8 @@ These gates remain pending because no development board is available. A mocked p
 - [ ] Execute scripts; upload/download/list/delete files; disconnect and reconnect.
 - [ ] Check wrong chip, invalid image, occupied port and interrupted operation recovery.
 
-## Classroom / V1.0
+## Release acceptance
 
-- [ ] Complete an offline lesson on a fresh Windows installation.
-- [ ] Teacher exports a lesson, student imports it and returns an assignment file.
+- [ ] Complete edit / compile / upload and MicroPython workflows on a fresh offline-provisioned Windows installation.
 - [ ] Keyboard and screen-reader checks with actual assistive software and intended users.
 - [ ] Review release signatures, notices, source availability and maintenance gates.

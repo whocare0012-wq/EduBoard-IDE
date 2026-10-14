@@ -7,7 +7,7 @@ The following instructions target **Windows 10/11** and Node.js **22 or later**.
 2. Install [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/) separately.
 3. Clone this repository.
 4. Run `npm ci` and `npm run dev`.
-5. Run `npm run check` before committing a development milestone. This includes type checking, unit checks, production bundling and a real Electron desktop workflow on Windows.
+5. Run `npm run check` before committing a development milestone. It includes type checks, unit checks, bundling, offline Electron foundation / Blockly / three-mode / Python workflows, and generated Python syntax checks. Python 3.11+ is required; hardware is not.
 
 Monaco and its language assets are bundled locally. Editing and saving do not need an internet connection. The desktop check deliberately disables networking and replaces only native file dialogs; project writes still run through the actual restricted IPC bridge and main-process filesystem code.
 
@@ -43,7 +43,13 @@ The generic ESP32 dev board commonly uses FQBN `esp32:esp32:esp32`, but select t
 - [ ] Repeat on a freshly installed Windows machine
 
 ## Building and packaging
-`npm run build` creates development build output, **not** a signed Windows installer. Dependencies are pinned in the committed lockfile; CI uses `npm ci` on Windows and Linux. Preview packaging follows in the next milestone. See [acceptance log](progress.md) for passed checks and outstanding hardware/release gates.
+`npm run build` bundles the desktop. `npm run package:win` checks and builds an unsigned NSIS preview. Dependencies are pinned; CI checks Windows and Linux and exercises packaged mode switching and Python on Windows. See [acceptance log](progress.md) and [release procedure](release.md).
+
+## MicroPython and optional tool checks
+
+See [MicroPython setup](micropython.md). `scripts/setup-python-tools.ps1` installs the pinned environment below `D:\Software\EduBoard-Tools`; `scripts/start-local.ps1` configures both toolchains.
+
+`npm run test:arduino` compiles a real Blink through the UI. `npm run test:examples` compiles all five generated C++ examples; both require the separately installed ESP32 core and libraries. `npm run test:serial-bridge` requires pyserial and checks the real Python bridge with in-memory loopback. `EDUBOARD_FIRMWARE_DIR` optionally verifies all four real catalogue images and exercises canceled flashing in the Python UI check. No acceptance script uploads or flashes real hardware.
 
 ## Troubleshooting
 - `ENOENT` or CLI not found: install Arduino CLI or set ARDUINO_CLI_PATH.

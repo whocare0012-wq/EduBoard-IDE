@@ -8,6 +8,8 @@ files:
   - LICENSE
   - '!node_modules/**/*'
 extraResources:
+  - from: apps/desktop/resources/tool_bridge.py
+    to: tool_bridge.py
   - from: LICENSE
     to: LICENSE
   - from: docs/third-party-licenses.md

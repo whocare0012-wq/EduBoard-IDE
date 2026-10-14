@@ -1,17 +1,17 @@
 # Architecture notes
 
 **State:** design outline, subject to change.
-The implementation separates sketch persistence (`projects.ts`), preferences (`settings.ts`), subprocess/serial lifecycle (`processes.ts`) and Arduino orchestration (`arduino.ts`).
+The implementation separates project persistence (`projects.ts`), preferences (`settings.ts`), subprocess/serial lifecycle (`processes.ts`), Arduino orchestration (`arduino.ts`) and MicroPython operations (`micropython.ts`).
 
 ## Main layers
 
-1. **Renderer** — React student workspace and Monaco code editor. No direct Node.js access.
+1. **Renderer** — React IDE with independent C++ / Python buffers, retained Blockly state and Monaco. No direct Node.js access.
 2. **Preload** — restricted typed IPC surface exposed with contextBridge.
 3. **Electron main** — file dialogs, local sketch persistence, child processes, serial session lifecycle.
-4. **Tools** — Arduino CLI is an external executable invoked with an argument array (not through a shell).
-5. **Future adapters** — board configuration, Blockly generators, MicroPython runtime and teaching projects.
+4. **Tools** — Arduino CLI and Python tools are external executables invoked with argument arrays, without a shell. The owned Python bridge performs syntax parsing, chip probing and serial transport.
+5. **Shared modules** — bounded project schema, pinned board/firmware catalogue, examples and language-specific block generators. A shared snapshot helper generates from both visible and retained workspaces.
 
-The first implementation intentionally focuses on a single supported pathway: ESP32 + Arduino C++. A board FQBN identifies a toolchain target, not a guarantee that a physical device is connected.
+The initial hardware family is ESP32. Arduino FQBN and MicroPython firmware IDs specify targets; neither proves a physical device is connected. Changing editing mode preserves all buffers and does not perform device operations beyond releasing a serial session when its language changes.
 
 ## Safety boundaries
 
@@ -26,8 +26,8 @@ The first implementation intentionally focuses on a single supported pathway: ES
 - IPC accepts only the application's main renderer frame. Permissions, navigation and new windows are denied. Production CSP permits local assets/workers only; dev relaxations apply only to the local server.
 - Installation of cores, toolchain distribution and firmware writes require explicit action and clear diagnostics.
 
-## Future extension strategy
+## Extension strategy
 
 Board adapters should describe IDs, capabilities, tools, required cores and upload behavior. Block-to-code generators must be language-specific; we will not promise round-trip conversion from arbitrary edited code back into blocks.
 
-A teaching project may contain source, build target, wiring notes, learning objectives, assets and optional assessments. Document/schema versions must be explicit when this is implemented.
+Project documents preserve the active source, both independent text drafts, block layout and both target settings. See [schema](project-format.md). Host tool paths remain local preferences. New board adapters must describe capabilities, tools and upload behavior without widening the IPC surface unnecessarily.

@@ -8,7 +8,7 @@ import { TEMPLATES } from '../../apps/desktop/src/shared/blocks/templates';
 import { validateProject, validateWorkspace } from '../../apps/desktop/src/shared/project-format';
 
 registerBlocks();
-test('all five teaching workspaces generate and round-trip through Blockly JSON', () => {
+test('all five example workspaces generate and round-trip through Blockly JSON', () => {
   for (const template of TEMPLATES) {
     const first = new Blockly.Workspace(); const second = new Blockly.Workspace();
     try {
@@ -34,8 +34,20 @@ test('project validation rejects unknown formats, pollution, deep data and exces
   assert.throws(() => validateWorkspace({ arbitraryPlugin: {} }));
   assert.throws(() => validateWorkspace({ blocks: { blocks: [{ type: 'unknown' }] } }));
   assert.throws(() => validateWorkspace({ blocks: { blocks: 'bad' } }));
+  assert.throws(() => validateWorkspace({ blocks: { blocks: [null] } }));
   assert.throws(() => validateWorkspace({ blocks: { blocks: [{ type: 'controls_if', extraState: { elseIfCount: 1000000 } }] } }));
   assert.equal(cppString('a"\\\n\u00001'), '"a\\"\\\\\\n\\0001"');
+});
+
+test('three-mode projects retain inactive drafts, blocks and board settings, including empty text', () => {
+  const document = { format: 'eduboard-project', version: 1, language: 'arduino', mode: 'text', source: '', fqbn: 'esp32:esp32:esp32',
+    workspace: TEMPLATES[0].createWorkspace(), drafts: { arduino: '', micropython: 'print(1)\n' }, blockTarget: 'micropython', microBoard: 'esp32c3' };
+  const restored = validateProject(JSON.parse(JSON.stringify(document)));
+  assert.deepEqual(restored, document);
+  assert.throws(() => validateProject({ ...document, drafts: { arduino: null, micropython: '' } }), /不一致/);
+  assert.throws(() => validateProject({ ...document, drafts: { arduino: '', micropython: '中'.repeat(333334) } }), /1 MB/);
+  assert.throws(() => validateProject({ ...document, blockTarget: 'javascript' }));
+  assert.throws(() => validateProject({ ...document, mode: 'blocks' }), /生成目标/);
 });
 
 test('numeric variables and division generate valid C++ number semantics', () => {

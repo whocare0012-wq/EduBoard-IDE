@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { microBoard, type MicroBoardId } from './boards';
 export type ProjectLanguage = 'arduino' | 'micropython';
 export type ProjectMode = 'text' | 'blocks';
 export type WorkspaceState = Record<string, unknown>;
+export type TextDrafts = Record<ProjectLanguage, string | null>;
 export const FQBN_PATTERN = /^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:[A-Za-z0-9_.-]+(?::[A-Za-z0-9_-]+=[A-Za-z0-9_.-]+(?:,[A-Za-z0-9_-]+=[A-Za-z0-9_.-]+)*)?$/;
 
 export interface ProjectDocument {
@@ -12,6 +14,9 @@ export interface ProjectDocument {
   source: string;
   fqbn: string;
   workspace: WorkspaceState | null;
+  microBoard?: MicroBoardId;
+  drafts?: TextDrafts;
+  blockTarget?: ProjectLanguage;
 }
 
 export const BLOCK_TYPES = new Set([
@@ -39,6 +44,7 @@ export function validateWorkspace(value: unknown): WorkspaceState {
   let blockCount = 0;
   function visit(node: unknown, depth: number, isBlock = false): void {
     if (++nodes > 30_000 || depth > 100) throw new Error('积木项目过大或嵌套过深。');
+    if (isBlock && !Array.isArray(node) && !record(node)) throw new Error('无效的积木对象。');
     if (typeof node === 'string' && node.length > 65_536) throw new Error('积木字段过长。');
     if (node && typeof node === 'object') {
       if (Array.isArray(node)) { for (const item of node) visit(item, depth + 1, isBlock); return; }
@@ -69,5 +75,19 @@ export function validateProject(value: unknown): ProjectDocument {
   if (typeof value.fqbn !== 'string' || value.fqbn.length > 240 || !FQBN_PATTERN.test(value.fqbn)) throw new Error('无效的项目开发板目标。');
   const workspace = value.workspace === null ? null : validateWorkspace(value.workspace);
   if (value.mode === 'blocks' && !workspace) throw new Error('积木项目缺少工作区。');
-  return { format: 'eduboard-project', version: 1, language: value.language, mode: value.mode, source: value.source, fqbn: value.fqbn, workspace };
+  const selectedBoard = value.microBoard !== undefined || value.language === 'micropython' ? microBoard(value.microBoard ?? 'esp32').id : undefined;
+  let drafts: TextDrafts | undefined;
+  if (value.drafts !== undefined) {
+    if (!record(value.drafts) || Object.keys(value.drafts).some(key => key !== 'arduino' && key !== 'micropython')) throw new Error('无效的文本工作区。');
+    for (const language of ['arduino', 'micropython'] as const) {
+      const draft = value.drafts[language];
+      if (draft !== null && (typeof draft !== 'string' || new TextEncoder().encode(draft).length > 1_000_000)) throw new Error('每个文本工作区须小于 1 MB。');
+    }
+    drafts = { arduino: value.drafts.arduino as string | null, micropython: value.drafts.micropython as string | null };
+    if (value.mode === 'text' && drafts[value.language] !== value.source) throw new Error('当前程序与文本工作区不一致。');
+  }
+  if (value.blockTarget !== undefined && value.blockTarget !== 'arduino' && value.blockTarget !== 'micropython') throw new Error('未知积木生成目标。');
+  if (value.mode === 'blocks' && value.blockTarget !== undefined && value.blockTarget !== value.language) throw new Error('积木生成目标与当前语言不一致。');
+  return { format: 'eduboard-project', version: 1, language: value.language, mode: value.mode, source: value.source, fqbn: value.fqbn, workspace,
+    ...(selectedBoard ? { microBoard: selectedBoard } : {}), ...(drafts ? { drafts } : {}), ...(value.blockTarget ? { blockTarget: value.blockTarget } : {}) };
 }

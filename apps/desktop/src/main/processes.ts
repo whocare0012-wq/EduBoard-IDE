@@ -97,7 +97,7 @@ export class SerialSession {
     if (this.child === child) { this.child = null; this.state(false); }
   }
 
-  async start(executable: string, args: string[], env?: NodeJS.ProcessEnv): Promise<ActionResult> {
+  async start(executable: string, args: string[], env?: NodeJS.ProcessEnv, readyLine?: string): Promise<ActionResult> {
     await this.stop();
     return new Promise((resolve) => {
       const child = spawn(executable, args, { windowsHide: true, shell: false, stdio: 'pipe', detached: process.platform !== 'win32', env: { ...process.env, ...env } });
@@ -105,11 +105,33 @@ export class SerialSession {
       let settled = false;
       const finish = (result: ActionResult): void => { if (!settled) { settled = true; resolve(result); } };
       const decoder = new StringDecoder('utf8');
-      child.stdout.on('data', (chunk: Buffer) => this.output(decoder.write(chunk).slice(-20_000)));
+      let pending = '';
+      let readySeen = false;
+      child.stdout.on('data', (chunk: Buffer) => {
+        let text = decoder.write(chunk);
+        if (readyLine && !readySeen) {
+          pending = (pending + text).slice(-20_000);
+          const lines = pending.split('\n');
+          pending = lines.pop() || '';
+          for (const line of lines) {
+            if (line.trim() === readyLine) {
+              readySeen = true; clearTimeout(ready); this.state(true); finish({ ok: true, message: '串口已连接，请查看设备输出。' });
+            } else this.output(line + '\n');
+          }
+          if (!readySeen) return;
+          text = pending; pending = '';
+        }
+        this.output(text.slice(-20_000));
+      });
       child.stderr.on('data', (chunk: Buffer) => this.output(chunk.toString('utf8').slice(-20_000)));
       const ready = setTimeout(() => {
+        if (readyLine && !readySeen) {
+          finish({ ok: false, message: '串口连接超时，请检查 Python 工具和端口。' });
+          void terminateProcess(child).catch(error => this.output(String(error)));
+          return;
+        }
         if (this.child === child) { this.state(true); finish({ ok: true, message: '串口连接请求已发出，请查看设备输出。' }); }
-      }, 350);
+      }, readyLine ? 10_000 : 350);
       child.on('error', (error) => finish({ ok: false, message: error.message }));
       child.on('close', (code) => {
         clearTimeout(ready);

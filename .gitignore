@@ -151,3 +151,5 @@ vite.config.ts.timestamp-*
 # Desktop checks and preview distributions
 output/
 release/
+__pycache__/
+*.pyc

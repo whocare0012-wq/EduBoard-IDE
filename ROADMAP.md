@@ -1,39 +1,39 @@
 # Development roadmap / 开发路线图
 
-Progress is tracked in GitHub Issues. Dates below are intentionally not promised.
+Scope: a desktop IDE with directly switchable graphical, Arduino C++ and MicroPython workspaces. No delivery dates are promised.
 
 ## V0.1 — Windows Arduino C++ foundation
-- [x] Electron / React desktop development startup and CI build pass
-- [x] Create, open, save Arduino sketches with valid sketch-folder structure
-- [x] Monaco C++ editing with student-friendly defaults
-- [x] Detect Arduino CLI and provide actionable setup guidance
-- [x] Support ESP32 board FQBN, detect available serial ports
-- [ ] Compile and upload a real Blink sketch with Arduino CLI (real compiler passed; physical upload pending)
-- [x] Serial monitor with selectable baud rate and safe release before uploading (transport checks passed; hardware gate remains below)
-- [ ] Real ESP32 hardware acceptance test on Windows 10/11
-- [ ] Windows installer and clean-machine validation (unsigned preview built and launched; clean-machine gate pending)
-- [x] Basic documentation, error handling and security review
 
-**Definition of Done:** A student on a supported Windows machine can create, compile and upload Blink to a real ESP32, then view serial output without using a second IDE.
+- [x] Electron / React development startup and CI
+- [x] Create, open and save valid Arduino sketches
+- [x] Offline Monaco editor
+- [x] Configurable Arduino CLI and ESP32 core installation
+- [x] Installed board targets and serial-port detection
+- [x] Real Blink compilation through the IDE
+- [x] Upload orchestration, serial lifecycle, cancellation and stale-build safeguards (software checks)
+- [x] Build and launch an unsigned Windows preview
+- [x] Documentation and renderer / IPC security checks
+- [ ] Real ESP32 upload, serial output and disconnect recovery
+- [ ] Clean Windows 10/11 installation, uninstall and driver acceptance
 
-## V0.2 — Block-based learning
-- [x] Blockly workspace and save/load project format
-- [x] GPIO, variable, loop, condition and delay blocks
-- [x] Arduino C++ code generator
-- [x] LED, button, DHT11, SH1106 OLED and NeoPixel examples (real compilation passed; physical behavior pending)
-- [x] Make generated code visible without claiming automatic code-to-blocks conversion
+## V0.2 — Graphical IDE
 
-## V0.3 — MicroPython
-- [ ] Supported board/firmware matrix
-- [ ] Firmware flashing safeguards
-- [ ] REPL, script execution and file transfers
-- [ ] MicroPython-specific Blockly generators
+- [x] Local Blockly workspace and versioned project persistence
+- [x] GPIO, numeric variables, arithmetic, loops, conditions and delays
+- [x] Arduino C++ generation and visible code preview
+- [x] LED, button, DHT11, SH1106 OLED and NeoPixel examples with real compiler checks
+- [x] Explicit adoption into editable code without promising reverse conversion
+- [ ] Physical example behavior and wiring acceptance
 
-## V1.0 — Classroom readiness
-- [ ] Project templates with learning goals and wiring guidance
-- [ ] Teacher resource authoring and assignment handoff
-- [ ] Offline deployment documentation and multilingual help
-- [ ] Accessibility testing, release signing strategy, and long-term maintenance policy
+## V0.3 — MicroPython and direct mode switching
 
-## Non-goals for V0.1
-No cloud accounts, student data collection, remote classroom monitoring, auto-updater, AI chat, or all-board/all-language compatibility.
+- [x] ESP32 / ESP32-C3 / ESP32-S3 firmware catalogue and pinned image checks
+- [x] Confirmed erase/write with actual chip, revision, capacity and security checks
+- [x] Syntax parsing, REPL, device execution and file transfers (software / transport checks)
+- [x] MicroPython-specific block generator; unsupported OLED blocks report an error
+- [x] Direct Graphical / C++ / Python controls preserving all three workspaces
+- [x] Save/reopen independent text drafts, block state and board settings
+- [x] Tool provisioning and offline setup documentation
+- [ ] Actual firmware boot, REPL, file transfers and block programs on hardware
+
+Each software target must pass functional checks before documentation, commit and push. Stable releases also require the remaining hardware gates, release signing and clean-machine validation. See [acceptance record](docs/progress.md).

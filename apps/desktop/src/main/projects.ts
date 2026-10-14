@@ -64,6 +64,13 @@ export async function writeSketch(filePath: string, source: unknown): Promise<Sk
   return { filePath, name: basename(filePath), source: safeSource };
 }
 
+export async function readPythonScript(filePath: string): Promise<Sketch> {
+  if (extname(filePath).toLowerCase() !== '.py') throw new Error('请选择 Python .py 文件。');
+  const info = await lstat(filePath);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_SOURCE_BYTES) throw new Error('只能打开小于 1 MB 的普通 Python 文件。');
+  return { filePath, name: basename(filePath), source: validateSource(await readFile(filePath, 'utf8')) };
+}
+
 export function normalizeProjectPath(selectedPath: string): string {
   const name = validateSketchName(basename(selectedPath).replace(/\.eduboard\.json$/i, '').replace(/\.(ino|json|py)$/i, ''));
   const parent = dirname(resolve(selectedPath));
