@@ -6,16 +6,23 @@ on:
     branches: [main]
 jobs:
   desktop:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Temporary until the initial generated lockfile is committed.
       - name: Install development dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Type check
         run: npm run typecheck
       - name: Bundle desktop sources
         run: npm run build
+      - name: Unit checks
+        run: npm test
+      - name: Windows desktop workflow
+        if: runner.os == 'Windows'
+        run: npm run test:desktop

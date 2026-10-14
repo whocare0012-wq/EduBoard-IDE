@@ -34,3 +34,9 @@ input, select { width: 100%; padding: 9px; background: #101823; color: #e9eef9; 
 .serial-input input { flex: 1; }
 .footer { font-size: 11px; display: flex; justify-content: space-between; align-items: center; background: #131b26; border-top: 1px solid #354155; padding: 7px 16px; gap: 10px; }
 @media (max-width: 1080px) { .header { flex-wrap: wrap; } .toolbar { flex-wrap: wrap; } .sidebar { width: 215px; } }
+
+:focus-visible { outline: 2px solid #8ebdf4; outline-offset: 3px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #0009; }
+.modal { max-width: 480px; margin: 20px; padding: 24px; border: 1px solid #46556b; border-radius: 12px; background: #1c2635; box-shadow: 0 12px 48px #0008; }
+.modal h2 { font-size: 18px; margin-top: 0; }
+.modal p { line-height: 1.65; }

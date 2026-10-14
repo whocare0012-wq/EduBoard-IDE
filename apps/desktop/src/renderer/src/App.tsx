@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type { CommandResult, PortInfo, Sketch } from '../../shared/types';
+import './editor';
+import ConfirmDialog from './ConfirmDialog';
 
 const STARTER = [
   '// EduBoard IDE - ESP32 Blink',
@@ -34,6 +36,9 @@ function displayResult(action: string, result: CommandResult): string {
 
 export default function App(): JSX.Element {
   const [source, setSource] = useState(STARTER);
+  const [savedSource, setSavedSource] = useState(STARTER);
+  const [confirmation, setConfirmation] = useState<{ resolve: (answer: boolean) => void } | null>(null);
+  const dirty = source !== savedSource;
   const [filePath, setFilePath] = useState('');
   const [fqbn, setFqbn] = useState('esp32:esp32:esp32');
   const [port, setPort] = useState('');
@@ -59,6 +64,29 @@ export default function App(): JSX.Element {
       removeState();
     };
   }, []);
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent): void => {
+      if (dirty || busy) { event.preventDefault(); event.returnValue = ''; }
+    };
+    const shortcut = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (!busy && !confirmation) void withBusy(async () => { await save(); });
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    window.addEventListener('keydown', shortcut);
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+      window.removeEventListener('keydown', shortcut);
+    };
+  }, [dirty, busy, source, confirmation]);
+
+  function discardIfNeeded(): Promise<boolean> {
+    if (!dirty) return Promise.resolve(true);
+    return new Promise((resolve) => setConfirmation({ resolve }));
+  }
 
   function append(message: string): void {
     setConsoleText((previous) => (previous + message + '\n').slice(-60_000));
@@ -88,6 +116,7 @@ export default function App(): JSX.Element {
 
   function applySketch(sketch: Sketch): void {
     setSource(sketch.source);
+    setSavedSource(sketch.source);
     setFilePath(sketch.filePath);
     append('[项目] ' + sketch.filePath);
   }
@@ -96,6 +125,7 @@ export default function App(): JSX.Element {
     const result = await window.eduboard.saveSketch(source);
     if (!result) return false;
     setFilePath(result.filePath);
+    setSavedSource(result.source);
     append('[已保存] ' + result.filePath);
     return true;
   }
@@ -162,12 +192,14 @@ export default function App(): JSX.Element {
         </div>
         <div className="toolbar">
           <button disabled={busy} onClick={() => void withBusy(async () => {
-            if (!window.confirm('新建项目将覆盖编辑器中未保存的内容，继续吗？')) return;
+            if (!(await discardIfNeeded())) return;
             await window.eduboard.newSketch();
             setFilePath('');
             setSource(STARTER);
+            setSavedSource(STARTER);
           })}>新建</button>
           <button disabled={busy} onClick={() => void withBusy(async () => {
+            if (!(await discardIfNeeded())) return;
             const project = await window.eduboard.openSketch();
             if (project) applySketch(project);
           })}>打开</button>
@@ -180,7 +212,7 @@ export default function App(): JSX.Element {
       <div className="workspace">
         <aside className="sidebar">
           <h3>当前项目</h3>
-          <div className="file">{filePath || '未保存 · Blink.ino'}</div>
+          <div className="file">{filePath || '未保存 · Blink.ino'}{dirty ? ' · 有未保存更改' : ''}</div>
           <h3>开发板配置</h3>
           <label htmlFor="fqbn">Arduino FQBN</label>
           <input id="fqbn" value={fqbn} disabled={busy} onChange={(e) => setFqbn(e.target.value)} />
@@ -200,7 +232,7 @@ export default function App(): JSX.Element {
         <section className="editor-region">
           <div className="section-head">
             <strong>Arduino C++</strong>
-            <span>{filePath ? '已打开项目' : '新建项目未保存'} · 图形化 / MicroPython 将在后续版本实现</span>
+            <span>{dirty ? '有未保存更改' : filePath ? '已保存' : '新建项目未保存'}</span>
           </div>
           <div className="editor">
             <Editor
@@ -209,13 +241,14 @@ export default function App(): JSX.Element {
               theme="vs-dark"
               value={source}
               onChange={(value) => setSource(value ?? '')}
-              options={{ minimap: { enabled: false }, fontSize: 14, automaticLayout: true, tabSize: 2 }}
+              loading={<p className="muted">正在加载本地编辑器…</p>}
+              options={{ minimap: { enabled: false }, fontSize: 15, automaticLayout: true, tabSize: 2, readOnly: busy, accessibilitySupport: 'on', editContext: false, ariaLabel: 'Arduino C++ 代码编辑器', scrollBeyondLastLine: false }}
             />
           </div>
           <div className="console-header">
             <strong>输出 / 串口监视器</strong>
             <div className="row">
-              <select value={baud} disabled={busy} onChange={(e) => setBaud(Number(e.target.value))}>
+              <select aria-label="串口波特率" value={baud} disabled={busy || monitoring} onChange={(e) => setBaud(Number(e.target.value))}>
                 <option value={9600}>9600</option>
                 <option value={115200}>115200</option>
                 <option value={230400}>230400</option>
@@ -226,17 +259,21 @@ export default function App(): JSX.Element {
           </div>
           <pre className="console">{consoleText || '暂无输出'}</pre>
           <div className="serial-input">
-            <input placeholder="向串口发送文本..." value={serialInput} disabled={!monitoring} onKeyDown={(e) => {
+            <input aria-label="串口发送文本" placeholder="向串口发送文本..." value={serialInput} disabled={!monitoring || busy} onKeyDown={(e) => {
               if (e.key === 'Enter') void sendSerial();
             }} onChange={(e) => setSerialInput(e.target.value)} />
-            <button disabled={!monitoring} onClick={() => void sendSerial()}>发送</button>
+            <button disabled={!monitoring || busy} onClick={() => void sendSerial()}>发送</button>
           </div>
         </section>
       </div>
       <footer className="footer">
         <span>EduBoard IDE · GPL-3.0 · Independent open-source project</span>
-        <span>{busy ? '任务执行中…' : monitoring ? '串口监视运行中' : '准备就绪（未验证硬件连接）'}</span>
+        <span role="status">{busy ? '任务执行中…' : monitoring ? '串口监视运行中' : '准备就绪（未验证硬件连接）'}</span>
       </footer>
+      {confirmation && <ConfirmDialog message="继续操作会丢失编辑器中未保存的更改。可取消后先保存。" onAnswer={(answer) => {
+        confirmation.resolve(answer);
+        setConfirmation(null);
+      }} />}
     </div>
   );
 }

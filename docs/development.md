@@ -6,8 +6,14 @@ The following instructions target **Windows 10/11** and Node.js **22 or later**.
 1. Install Node.js and Git.
 2. Install [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/) separately.
 3. Clone this repository.
-4. Run `npm install` and `npm run dev`.
-5. Run `npm run typecheck` and `npm run build` before submitting a pull request.
+4. Run `npm ci` and `npm run dev`.
+5. Run `npm run check` before committing a development milestone. This includes type checking, unit checks, production bundling and a real Electron desktop workflow on Windows.
+
+Monaco and its language assets are bundled locally. Editing and saving do not need an internet connection. The desktop check deliberately disables networking and replaces only native file dialogs; project writes still run through the actual restricted IPC bridge and main-process filesystem code.
+
+`npm run test:desktop` requires a previously built `out/` directory and the installed Electron executable. Check screenshots go to ignored `output/playwright/`. No connected board is needed for these checks. `EDUBOARD_USER_DATA` can isolate a check profile; omit it in normal use.
+
+Sketch names use an ASCII letter or underscore first, followed by letters, digits, underscores or hyphens, up to 63 characters. Unicode parent directories and source text are supported. Open a primary sketch in its same-named directory (`Blink/Blink.ino`). Writes use a sibling temporary file and rename; failed writes do not change the active project path. New/open/close actions guard unsaved edits; Ctrl+S saves.
 
 Arduino CLI must be discoverable as `arduino-cli` on PATH. Alternatively, set `ARDUINO_CLI_PATH` to the absolute executable path before starting the development process.
 
@@ -33,7 +39,7 @@ The generic ESP32 dev board commonly uses FQBN `esp32:esp32:esp32`, but select t
 - [ ] Repeat on a freshly installed Windows machine
 
 ## Building and packaging
-`npm run build` creates development build output, **not** a signed Windows installer. An installer and a lockfile will be added before first official release. Dependency updates must be reviewed and pinned in a committed lockfile before claiming reproducible builds.
+`npm run build` creates development build output, **not** a signed Windows installer. Dependencies are pinned in the committed lockfile; CI uses `npm ci` on Windows and Linux. Preview packaging follows in the next milestone. See [acceptance log](progress.md) for passed checks and outstanding hardware/release gates.
 
 ## Troubleshooting
 - `ENOENT` or CLI not found: install Arduino CLI or set ARDUINO_CLI_PATH.

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from 'electron';
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join, parse } from 'node:path';
+import { lstat } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { CommandResult, PortsResult, Sketch, PortInfo, ActionResult } from '../shared/types';
+import { normalizeSketchPath, readSketch, validateSource, writeSketch } from './projects';
+
+if (process.env.EDUBOARD_USER_DATA) app.setPath('userData', process.env.EDUBOARD_USER_DATA);
 
 let mainWindow: BrowserWindow | null = null;
 let currentSketchPath: string | null = null;
@@ -41,19 +44,9 @@ function validatePort(port: unknown): string {
   return port;
 }
 
-function validateSource(source: unknown): string {
-  if (typeof source !== 'string' || source.length > 1_000_000) {
-    throw new Error('Sketch source must be text smaller than 1 MB.');
-  }
-  return source;
-}
-
-function sketch(filePath: string, source: string): Sketch {
-  return { filePath, name: basename(filePath), source };
-}
-
 async function saveSketch(source: string): Promise<Sketch | null> {
   const safeSource = validateSource(source);
+  let targetPath = currentSketchPath;
   if (!currentSketchPath) {
     const selection = await dialog.showSaveDialog({
       title: 'Save Arduino sketch',
@@ -62,24 +55,32 @@ async function saveSketch(source: string): Promise<Sketch | null> {
     });
     if (selection.canceled || !selection.filePath) return null;
 
-    // Arduino CLI requires SketchName/SketchName.ino.
-    const chosen = extname(selection.filePath).toLowerCase() === '.ino'
-      ? selection.filePath
-      : selection.filePath + '.ino';
-    const name = parse(chosen).name;
-    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(name)) {
-      throw new Error('Use only letters, numbers, underscores or hyphens in sketch names.');
+    targetPath = normalizeSketchPath(selection.filePath);
+    if (await lstat(targetPath).then(() => true, (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    })) {
+      const choice = await dialog.showMessageBox({
+        type: 'warning', title: '覆盖已有项目？', message: targetPath,
+        detail: 'Arduino 文件会保存在同名文件夹中。是否覆盖这个现有文件？',
+        buttons: ['取消', '覆盖'], defaultId: 0, cancelId: 0
+      });
+      if (choice.response !== 1) return null;
     }
-    const chosenFolder = dirname(chosen);
-    const folder = basename(chosenFolder).toLowerCase() === name.toLowerCase()
-      ? chosenFolder
-      : join(chosenFolder, name);
-    currentSketchPath = join(folder, name + '.ino');
   }
+  if (!targetPath) return null;
+  const saved = await writeSketch(targetPath, safeSource);
+  currentSketchPath = saved.filePath;
+  return saved;
+}
 
-  await mkdir(dirname(currentSketchPath), { recursive: true });
-  await writeFile(currentSketchPath, safeSource, 'utf8');
-  return sketch(currentSketchPath, safeSource);
+function handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown): void {
+  ipcMain.handle(channel, (event, ...args: unknown[]) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) {
+      throw new Error('Untrusted IPC sender.');
+    }
+    return listener(event, ...args);
+  });
 }
 
 function sendMonitorData(chunk: string): void {
@@ -125,8 +126,8 @@ async function stopMonitor(): Promise<void> {
 }
 
 function registerHandlers(): void {
-  ipcMain.handle('cli:version', () => runCli(['version'], 20_000));
-  ipcMain.handle('cli:ports', async (): Promise<PortsResult> => {
+  handle('cli:version', () => runCli(['version'], 20_000));
+  handle('cli:ports', async (): Promise<PortsResult> => {
     const result = await runCli(['board', 'list', '--format', 'json'], 30_000);
     let ports: PortInfo[] = [];
     if (result.ok) {
@@ -147,11 +148,11 @@ function registerHandlers(): void {
     return { ...result, ports };
   });
 
-  ipcMain.handle('project:new', () => {
+  handle('project:new', () => {
     currentSketchPath = null;
   });
 
-  ipcMain.handle('project:open', async (): Promise<Sketch | null> => {
+  handle('project:open', async (): Promise<Sketch | null> => {
     const selection = await dialog.showOpenDialog({
       title: 'Open Arduino sketch',
       properties: ['openFile'],
@@ -159,14 +160,14 @@ function registerHandlers(): void {
     });
     if (selection.canceled || !selection.filePaths[0]) return null;
     const filePath = selection.filePaths[0];
-    const source = await readFile(filePath, 'utf8');
-    currentSketchPath = filePath;
-    return sketch(filePath, source);
+    const opened = await readSketch(filePath);
+    currentSketchPath = opened.filePath;
+    return opened;
   });
 
-  ipcMain.handle('project:save', (_event, source: string) => saveSketch(source));
+  handle('project:save', (_event, source: string) => saveSketch(source));
 
-  ipcMain.handle('cli:compile', async (_event, board: string): Promise<CommandResult> => {
+  handle('cli:compile', async (_event, board: string): Promise<CommandResult> => {
     const fqbn = validateFqbn(board);
     if (!currentSketchPath) {
       return { ok: false, stdout: '', stderr: 'Save the sketch before compiling.' };
@@ -174,7 +175,7 @@ function registerHandlers(): void {
     return runCli(['compile', '--fqbn', fqbn, dirname(currentSketchPath)]);
   });
 
-  ipcMain.handle('cli:upload', async (_event, board: string, port: string): Promise<CommandResult> => {
+  handle('cli:upload', async (_event, board: string, port: string): Promise<CommandResult> => {
     const fqbn = validateFqbn(board);
     const validatedPort = validatePort(port);
     if (!currentSketchPath) {
@@ -184,7 +185,7 @@ function registerHandlers(): void {
     return runCli(['upload', '--fqbn', fqbn, '--port', validatedPort, dirname(currentSketchPath)]);
   });
 
-  ipcMain.handle('monitor:start', async (_event, port: string, baud: number): Promise<ActionResult> => {
+  handle('monitor:start', async (_event, port: string, baud: number): Promise<ActionResult> => {
     const validatedPort = validatePort(port);
     if (!Number.isInteger(baud) || baud < 300 || baud > 2_000_000) {
       throw new Error('Invalid baud rate.');
@@ -223,8 +224,8 @@ function registerHandlers(): void {
       });
     });
   });
-  ipcMain.handle('monitor:stop', () => stopMonitor());
-  ipcMain.handle('monitor:send', (_event, text: string) => {
+  handle('monitor:stop', () => stopMonitor());
+  handle('monitor:send', (_event, text: string) => {
     if (typeof text !== 'string' || text.length > 2048) throw new Error('Invalid monitor input.');
     if (!monitor || monitor.stdin.destroyed) throw new Error('Serial monitor is not running.');
     monitor.stdin.write(text);
@@ -249,6 +250,13 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync({
+      type: 'warning', title: '尚有未保存内容', message: '关闭会丢失未保存的内容。',
+      detail: '选择取消可返回编辑器保存项目。', buttons: ['取消', '放弃并关闭'], defaultId: 0, cancelId: 0
+    });
+    if (choice === 1) event.preventDefault();
+  });
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -258,6 +266,15 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const dev = Boolean(process.env.ELECTRON_RENDERER_URL);
+    const policy = "default-src 'self'; script-src 'self'" + (dev ? " 'unsafe-inline'" : '') +
+      "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'" +
+      (dev ? ' ws://localhost:* ws://127.0.0.1:*' : '') + "; object-src 'none'; base-uri 'none'; frame-src 'none'";
+    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
+  });
   registerHandlers();
   createWindow();
   app.on('activate', () => {

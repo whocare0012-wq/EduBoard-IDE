@@ -16,3 +16,5 @@ The repository is licensed under GPL-3.0. This document is **not** a substitute 
 Do not copy Mixly proprietary branding, artwork or code without verifying its specific repository's license. The project is independent and unaffiliated with Arduino, Google or Mixly.
 
 Before a release, generate an exact lockfile, a dependency license report, and a third-party notices file. Review any native code, firmware and driver licenses separately.
+
+The foundation uses Electron 44.7.2 (MIT), React 18.3.1 (MIT), @monaco-editor/react 4.7.0 (MIT), Monaco 0.57.0 (MIT), and DOMPurify 3.4.17 (Apache-2.0 OR MPL-2.0). DOMPurify overrides Monaco's pinned dependency to remove known advisories. Playwright 1.64.1 (Apache-2.0) and tsx 4.23.15 (MIT) are development-only check tools. Exact transitive versions and registry integrity hashes are in `package-lock.json`.

@@ -4,8 +4,8 @@ Progress is tracked in GitHub Issues. Dates below are intentionally not promised
 
 ## V0.1 — Windows Arduino C++ foundation
 - [ ] Electron / React desktop development startup and CI build pass
-- [ ] Create, open, save Arduino sketches with valid sketch-folder structure
-- [ ] Monaco C++ editing with student-friendly defaults
+- [x] Create, open, save Arduino sketches with valid sketch-folder structure
+- [x] Monaco C++ editing with student-friendly defaults
 - [ ] Detect Arduino CLI and provide actionable setup guidance
 - [ ] Support ESP32 board FQBN, detect available serial ports
 - [ ] Compile and upload a real Blink sketch with Arduino CLI
