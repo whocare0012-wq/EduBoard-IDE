@@ -161,6 +161,7 @@ try {
   await page.getByLabel('串口', { exact: true }).fill('COM9999');
   await page.getByRole('button', { name: '打开串口', exact: true }).click(); await ready();
   await page.getByRole('button', { name: '关闭串口', exact: true }).waitFor();
+  await page.locator('.console').filter({ hasText: 'fixture serial pid:' }).waitFor();
   const serialPid = Number(/fixture serial pid: (\d+)/.exec(await page.locator('.console').innerText())?.[1]);
   assert.ok(serialPid > 0, 'Serial transport fixture is running without opening a real port');
   await page.evaluate(() => { window.eduboard.onCloseRequested(id => { window.lastCloseForSmoke = id; }); });
