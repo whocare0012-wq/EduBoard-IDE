@@ -25,6 +25,7 @@ export default defineConfig({
         return html.replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="' + policy + '">');
       }
     }],
-    build: { rollupOptions: { input: resolve('apps/desktop/src/renderer/index.html') } }
+    // electron-vite leaves the renderer unminified by default; Monaco alone is ~8 MB that way.
+    build: { minify: 'esbuild', rollupOptions: { input: resolve('apps/desktop/src/renderer/index.html') } }
   }
 });

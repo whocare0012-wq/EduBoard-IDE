@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { test } from 'node:test';
 import { ArduinoService, parseBoards, parsePorts, validateBaud, validateFqbn, validatePort } from '../../apps/desktop/src/main/arduino';
 import { CommandRunner, SerialSession } from '../../apps/desktop/src/main/processes';
@@ -83,4 +84,39 @@ test('serial startup failure never reports a connected monitor', async () => {
   assert.equal(result.ok, false);
   assert.equal(serial.running, false);
   assert.equal(states.includes(true), false);
+});
+
+test('an unconfirmed termination releases the runner instead of staying busy forever', async () => {
+  const stuck: ChildProcessWithoutNullStreams[] = [];
+  const failing = async (child: ChildProcessWithoutNullStreams): Promise<void> => { stuck.push(child); throw new Error('stuck driver'); };
+  const runner = new CommandRunner(undefined, failing);
+  try {
+    const timeout = await runner.run(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { timeout: 100 });
+    assert.equal(timeout.ok, false);
+    assert.match(timeout.stderr, /超时[\s\S]*stuck driver[\s\S]*重启应用/);
+    assert.equal(runner.busy, false);
+    const pending = runner.run(process.execPath, ['-e', 'setInterval(()=>{},1000)']);
+    await assert.rejects(runner.cancel(), /stuck driver/);
+    const cancelled = await pending;
+    assert.equal(cancelled.cancelled, true);
+    assert.equal(runner.busy, false);
+    assert.equal((await new CommandRunner().run(process.execPath, ['-e', 'process.exit(0)'])).ok, true);
+  } finally { for (const child of stuck) child.kill(); }
+});
+
+test('serial stop forgets an unconfirmed child and stderr keeps split UTF-8 intact', async () => {
+  let output = '';
+  const states: boolean[] = [];
+  const stuck: ChildProcessWithoutNullStreams[] = [];
+  const serial = new SerialSession(text => { output += text; }, state => states.push(state), async child => { stuck.push(child); throw new Error('stuck port'); });
+  try {
+    const script = 'process.stderr.write(Buffer.from([0xe4]));setTimeout(()=>process.stderr.write(Buffer.from([0xb8,0xad,0x0a])),30);setInterval(()=>{},1000)';
+    assert.equal((await serial.start(process.execPath, ['-e', script])).ok, true);
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.match(output, /中\n/);
+    await assert.rejects(serial.stop(), /stuck port/);
+    assert.equal(serial.running, false);
+    assert.equal(states.at(-1), false);
+    await serial.stop();
+  } finally { for (const child of stuck) child.kill(); }
 });

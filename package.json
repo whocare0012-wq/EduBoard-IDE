@@ -24,7 +24,8 @@
     "examples:python": "node --import tsx scripts/check-python-examples.mts --write-examples",
     "check": "npm run typecheck && npm test && npm run build && npm run test:desktop && npm run test:blocks && npm run test:modes && npm run test:python && npm run test:python-examples",
     "package:dir": "npm run build && electron-builder --dir --win --x64 --publish never",
-    "package:win": "npm run check && electron-builder --win --x64 --publish never"
+    "package:win": "npm run check && npm run package:win:fast",
+    "package:win:fast": "npm run build && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",

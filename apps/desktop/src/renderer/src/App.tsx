@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type { BoardInfo, CommandResult, PortInfo, Sketch, ToolSettings } from '../../shared/types';
 import './editor';
-import ConfirmDialog from './ConfirmDialog';
+import ConfirmDialog, { DISCARD_TEXT, type ConfirmText } from './ConfirmDialog';
 import type { BlockEditorHandle } from './BlockEditor';
 import type { ProjectDocument, ProjectLanguage, ProjectMode, TextDrafts, WorkspaceState } from '../../shared/project-format';
 import { TEMPLATES, microTemplate } from '../../shared/blocks/templates';
@@ -65,7 +65,7 @@ export default function App(): JSX.Element {
   const template = TEMPLATES.find(item => item.id === selectedTemplate)!;
   const [projectPath, setProjectPath] = useState('');
   const [savedFqbn, setSavedFqbn] = useState('esp32:esp32:esp32');
-  const [confirmation, setConfirmation] = useState<{ message: string; resolve: (answer: boolean) => void } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ message: string; text: ConfirmText; resolve: (answer: boolean) => void } | null>(null);
   const [filePath, setFilePath] = useState('');
   const [fqbn, setFqbn] = useState('esp32:esp32:esp32');
   const dirty = textDrafts.arduino !== savedDrafts.arduino || textDrafts.micropython !== savedDrafts.micropython
@@ -117,8 +117,8 @@ export default function App(): JSX.Element {
     };
   }, [dirty, busy, source, textDrafts, workspaceState, confirmation, fqbn, mode, language, microBoardId, blockRevision, blockTarget]);
 
-  function confirmChange(message: string): Promise<boolean> {
-    return new Promise(resolve => setConfirmation({ message, resolve }));
+  function confirmChange(message: string, text = DISCARD_TEXT): Promise<boolean> {
+    return new Promise(resolve => setConfirmation({ message, text, resolve }));
   }
 
   function discardIfNeeded(): Promise<boolean> {
@@ -257,7 +257,7 @@ export default function App(): JSX.Element {
       if (!state) throw new Error('请先创建图形化工作区。');
       const code = await generated(state, language);
       const existing = textDrafts[language];
-      if (existing !== null && existing !== code && !(await confirmChange('采用积木生成代码会替换当前语言的文本。积木和另一语言的代码会保留。'))) return;
+      if (existing !== null && existing !== code && !(await confirmChange('采用积木生成代码会替换当前语言的文本。积木和另一语言的代码会保留。', { title: '替换文本代码？', confirm: '替换代码' }))) return;
       setWorkspaceState(state); setTextDrafts(previous => ({ ...previous, [language]: code }));
       setSource(code); setMode('text'); setBlockEpoch(previous => previous + 1);
       append('[代码] 已采用积木生成代码。文本修改不会自动转回积木。');
@@ -531,7 +531,7 @@ export default function App(): JSX.Element {
         <span>EduBoard IDE · GPL-3.0 · Independent open-source project</span>
         <span role="status">{busy ? '任务执行中…' : monitoring ? '串口监视运行中' : '准备就绪（未验证硬件连接）'}</span>
       </footer>
-      {confirmation && <ConfirmDialog message={confirmation.message} onAnswer={(answer) => {
+      {confirmation && <ConfirmDialog message={confirmation.message} text={confirmation.text} onAnswer={(answer) => {
         confirmation.resolve(answer);
         setConfirmation(null);
       }} />}

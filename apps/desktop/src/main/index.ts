@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
-import { lstat } from 'node:fs/promises';
+import { lstat, readFile } from 'node:fs/promises';
 import { basename, dirname, join, posix } from 'node:path';
 import type { BoardsResult, CommandResult, FirmwareInfo, PortsResult, Sketch, ToolSettings } from '../shared/types';
-import { atomicWrite, normalizeProjectPath, normalizeSketchPath, projectSourcePath, readProject, readPythonScript, readSketch, validateSource, writeProject, writeSketch } from './projects';
+import { atomicWrite, defaultProjectName, exportNeedsConfirmation, generationFailed, normalizeProjectPath, normalizeSketchPath, projectPathForSource, projectSourcePath, readProject, readPythonScript, readSketch, validateSource, writeProject, writeSketch } from './projects';
 import { SENSOR_LIBRARIES, validateProject, type ProjectLanguage } from '../shared/project-format';
 import { microBoard } from '../shared/boards';
 import { MicroPythonService, validateRemotePath } from './micropython';
@@ -100,16 +100,28 @@ async function saveSketch(source: unknown): Promise<Sketch | null> {
 
 async function saveProject(value: unknown): Promise<Sketch | null> {
   const document = validateProject(value);
-  let targetPath = currentProjectPath;
-  if (!targetPath && currentSketchPath) targetPath = normalizeProjectPath(join(dirname(currentSketchPath), basename(currentSketchPath).replace(/\.(ino|py)$/i, '') + '.eduboard.json'));
+  let targetPath = currentProjectPath ?? (currentSketchPath ? projectPathForSource(currentSketchPath) : null);
   if (!targetPath) {
-    const selected = await dialog.showSaveDialog({ title: '保存 EduBoard 项目', defaultPath: join(app.getPath('documents'), document.language === 'arduino' ? 'Blink.eduboard.json' : 'PythonProject.eduboard.json'), filters: [{ name: 'EduBoard Project', extensions: ['json'] }] });
+    // A standalone script cannot become a project in place (projects need Name/Name.eduboard.json), so ask where to put it.
+    const fallback = document.language === 'arduino' ? 'Blink' : 'PythonProject';
+    const defaultPath = currentSketchPath ? join(dirname(currentSketchPath), defaultProjectName(currentSketchPath, fallback) + '.eduboard.json') : join(app.getPath('documents'), fallback + '.eduboard.json');
+    const selected = await dialog.showSaveDialog({ title: '保存 EduBoard 项目（将创建同名文件夹）', defaultPath, filters: [{ name: 'EduBoard Project', extensions: ['json'] }] });
     if (selected.canceled || !selected.filePath) return null;
     targetPath = normalizeProjectPath(selected.filePath);
   }
   const exists = (path: string): Promise<boolean> => lstat(path).then(() => true, (error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return false; throw error; });
   const targetSource = projectSourcePath(targetPath, document.language);
-  if (targetPath !== currentProjectPath && (await exists(targetPath) || targetSource !== currentSketchPath && await exists(targetSource))) {
+  // An existing export is ours only if it still holds what this project last saved for that language.
+  const foreignSource = async (): Promise<boolean> => {
+    if (generationFailed(document) || !(await exists(targetSource))) return false;
+    // Converting the opened standalone source into a project: that file is the one being edited.
+    if (!currentProjectPath && targetSource === currentSketchPath) return false;
+    if (targetPath !== currentProjectPath) return true;
+    // Within a project, the export may have been edited outside the IDE since the last save.
+    const saved = await readProject(targetPath).then(project => project.document!, () => null);
+    return readFile(targetSource, 'utf8').then(text => exportNeedsConfirmation(text, saved, document.language), () => true);
+  };
+  if (targetPath !== currentProjectPath && await exists(targetPath) || await foreignSource()) {
     const choice = await dialog.showMessageBox({ type: 'warning', title: '覆盖已有项目？', message: targetPath, detail: '是否覆盖已有项目数据及程序？\n' + targetSource, buttons: ['取消', '覆盖'], defaultId: 0, cancelId: 0 });
     if (choice.response !== 1) return null;
   }
