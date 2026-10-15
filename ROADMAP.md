@@ -36,6 +36,7 @@ Scope: a desktop IDE with directly switchable graphical, Arduino C++ and MicroPy
 - [x] Preserve per-language editor view state and undo/redo during a project session
 - [x] Adaptive output / preview panels and C3 wiring consistent with generated defaults
 - [x] Syntax/compiler inline markers, clickable diagnostics across modes, stale-location cleanup and single-copy streamed failures
+- [x] Save-and-continue for unsaved new/open/close; canceled or failed saves retain the current project
 - [x] Tool provisioning and offline setup documentation
 - [ ] Actual firmware boot, REPL, file transfers and block programs on hardware
 

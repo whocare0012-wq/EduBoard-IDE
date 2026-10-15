@@ -52,6 +52,8 @@ export interface ActionResult {
 }
 
 export interface EduBoardApi {
+  onCloseRequested(listener: (requestId: string) => void): () => void;
+  respondToClose(requestId: string, proceed: boolean): Promise<void>;
   cliVersion(): Promise<CommandResult>;
   ports(): Promise<PortsResult>;
   boards(): Promise<BoardsResult>;

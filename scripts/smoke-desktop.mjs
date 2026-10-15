@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { closeSmoke } from './close-smoke.mjs';
 
 const require = createRequire(import.meta.url);
 const temp = await mkdtemp(join(tmpdir(), 'eduboard-desktop-'));
@@ -71,6 +72,6 @@ try {
   assert.deepEqual(remoteRequests, [], 'Editor must not contact a CDN');
   console.log('PASS desktop: offline Monaco, isolated preload, Unicode save/reopen, unsaved protection, missing-tool diagnostics.');
 } finally {
-  await application.close();
+  await closeSmoke(application);
   await rm(temp, { recursive: true, force: true });
 }

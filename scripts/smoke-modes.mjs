@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { closeSmoke } from './close-smoke.mjs';
 
 const require = createRequire(import.meta.url);
 const root = await mkdtemp(join(tmpdir(), 'eduboard-modes-'));
@@ -88,4 +89,4 @@ try {
   await mkdir(resolve('output/playwright'), { recursive: true });
   await (await application.firstWindow()).screenshot({ path: resolve('output/playwright/three-modes-failure.png') }).catch(() => {});
   throw error;
-} finally { await application.close(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+} finally { await closeSmoke(application); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }

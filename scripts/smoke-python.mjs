@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { closeSmoke } from './close-smoke.mjs';
 
 const require = createRequire(import.meta.url);
 const root = await mkdtemp(join(tmpdir(), 'eduboard-python-ui-'));
@@ -69,4 +70,4 @@ try {
   await page.screenshot({ path: resolve('output/playwright/micropython.png') });
   assert.deepEqual(errors, []);
   console.log('PASS MicroPython desktop: Python project save, parser without host execution, syntax failure, block generator/C3 defaults, missing-port guard, invalid firmware and canceled flash. No hardware writes.');
-} finally { await application.close(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+} finally { await closeSmoke(application); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }

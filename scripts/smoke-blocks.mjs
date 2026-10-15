@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { closeSmoke } from './close-smoke.mjs';
 
 const require = createRequire(import.meta.url);
 const temp = await mkdtemp(join(tmpdir(), 'eduboard-blocks-'));
@@ -81,4 +82,4 @@ try {
   const page = await application.firstWindow();
   await page.screenshot({ path: resolve('output/playwright/blockly-failure.png') }).catch(() => {});
   throw error;
-} finally { await application.close(); await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+} finally { await closeSmoke(application); await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }

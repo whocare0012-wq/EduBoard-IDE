@@ -91,7 +91,7 @@ export default function App(): JSX.Element {
   const template = TEMPLATES.find(item => item.id === selectedTemplate)!;
   const [projectPath, setProjectPath] = useState('');
   const [savedFqbn, setSavedFqbn] = useState('esp32:esp32:esp32');
-  const [confirmation, setConfirmation] = useState<{ message: string; text: ConfirmText; resolve: (answer: boolean) => void } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ message: string; text: ConfirmText; resolve: (answer: boolean) => void; save?: () => void } | null>(null);
   const [filePath, setFilePath] = useState('');
   const [fqbn, setFqbn] = useState('esp32:esp32:esp32');
   const dirty = textDrafts.arduino !== savedDrafts.arduino || textDrafts.micropython !== savedDrafts.micropython
@@ -105,6 +105,9 @@ export default function App(): JSX.Element {
   const [consoleChunks, setConsoleChunks] = useState<OutputChunk[]>([{ text: '欢迎使用 EduBoard IDE。请先安装 Arduino CLI 和 ESP32 核心。\n' }]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const contentRevision = useRef(0);
+  const activeCloseRequest = useRef<string | null>(null);
+  const closeHandler = useRef(closeWindow); closeHandler.current = closeWindow;
   const [monitoring, setMonitoring] = useState(false);
   const [serialInput, setSerialInput] = useState('');
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel | null>('project');
@@ -131,18 +134,20 @@ export default function App(): JSX.Element {
       setConsoleChunks(previous => appendOutput(previous, data));
     });
     const removeState = window.eduboard.onMonitorState(setMonitoring);
+    const removeCloseRequest = window.eduboard.onCloseRequested(requestId => { void closeHandler.current(requestId); });
     void refreshToolchain();
     void refreshPorts();
     return () => {
       removeOutput();
       removeState();
       removeTaskOutput();
+      removeCloseRequest();
     };
   }, []);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent): void => {
-      if (dirty || busy) { event.preventDefault(); event.returnValue = ''; }
+      if (hasUnsavedChanges() || busyRef.current) { event.preventDefault(); event.returnValue = ''; }
     };
     const shortcut = (event: KeyboardEvent): void => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -162,9 +167,46 @@ export default function App(): JSX.Element {
     return new Promise(resolve => setConfirmation({ message, text, resolve }));
   }
 
-  function discardIfNeeded(): Promise<boolean> {
-    if (!dirty) return Promise.resolve(true);
-    return confirmChange('继续操作会丢失三个模式中未保存的更改。可取消后先保存。');
+  function hasUnsavedChanges(): boolean {
+    const drafts = { ...textDrafts, ...codeEditor.current?.drafts() };
+    if (dirty || drafts.arduino !== savedDrafts.arduino || drafts.micropython !== savedDrafts.micropython) return true;
+    const blocks = mode === 'blocks' ? blockEditor.current?.snapshot() : null;
+    return Boolean(blocks && JSON.stringify(blocks.workspace) !== JSON.stringify(workspaceState));
+  }
+
+  async function prepareToLeave(action: string): Promise<boolean> {
+    if (!hasUnsavedChanges()) return true;
+    const choice = await new Promise<'save' | 'discard' | 'cancel'>(resolve => setConfirmation({
+      message: '执行“' + action + '”前，是否保存当前项目？C++、Python 文本和积木会一起保存。', text: DISCARD_TEXT,
+      resolve: answer => resolve(answer ? 'discard' : 'cancel'), save: () => resolve('save')
+    }));
+    if (choice !== 'save') return choice === 'discard';
+    const revision = contentRevision.current;
+    if (!(await save())) return false;
+    if (contentRevision.current !== revision) {
+      layout.setOutputOpen(true);
+      append('[保存] 保存期间仍有更改，已取消“' + action + '”，请再次保存。');
+      return false;
+    }
+    return true;
+  }
+
+  async function closeWindow(requestId: string): Promise<void> {
+    if (activeCloseRequest.current === requestId) return;
+    activeCloseRequest.current = requestId;
+    try {
+      if (busyRef.current) {
+        layout.setOutputOpen(true); append('[关闭] 请先完成或取消当前操作，再关闭窗口。');
+        await window.eduboard.respondToClose(requestId, false);
+        return;
+      }
+      await withBusy(async () => {
+        let proceed = false;
+        try { proceed = await prepareToLeave('关闭窗口'); }
+        finally { await window.eduboard.respondToClose(requestId, proceed); }
+      });
+    } catch (error) { append('[错误] ' + errorText(error)); }
+    finally { activeCloseRequest.current = null; }
   }
 
   function append(message: string): void {
@@ -207,6 +249,7 @@ export default function App(): JSX.Element {
     try {
       await task();
     } catch (error) {
+      layout.setOutputOpen(true);
       append('[错误] ' + errorText(error));
     } finally {
       setBusy(false);
@@ -316,7 +359,7 @@ export default function App(): JSX.Element {
 
   async function newBlocks(): Promise<void> {
     await withBusy(async () => {
-      if (!(await discardIfNeeded())) return;
+      if (!(await prepareToLeave('新建图形化示例'))) return;
       await window.eduboard.newSketch(language);
       resetProject('', 'blocks', language === 'arduino' ? template.createWorkspace() : microTemplate(template, microBoardId));
       append('[示例] ' + template.name + ' · 请按接线说明检查实际板型。');
@@ -478,12 +521,12 @@ export default function App(): JSX.Element {
         <div className="divider" />
         <div className="toolbar-group">
           <button className="btn ghost collapse-able" aria-label="新建" title="新建项目" disabled={busy} onClick={() => void withBusy(async () => {
-            if (!(await discardIfNeeded())) return;
+            if (!(await prepareToLeave('新建项目'))) return;
             await window.eduboard.newSketch(language);
             resetProject(language === 'arduino' ? STARTER : pythonStarter(microBoardId), 'text', null);
           })}>{icons.newFile}<span className="label-collapse">新建</span></button>
           <button className="btn ghost collapse-able" aria-label="打开" title="打开项目或源程序" disabled={busy} onClick={() => void withBusy(async () => {
-            if (!(await discardIfNeeded())) return;
+            if (!(await prepareToLeave('打开项目'))) return;
             const project = await window.eduboard.openSketch();
             if (project) applySketch(project);
           })}>{icons.open}<span className="label-collapse">打开</span></button>
@@ -645,7 +688,7 @@ export default function App(): JSX.Element {
               <Suspense fallback={<p className="hint" style={{ padding: 16 }}>正在加载本地积木编辑器…</p>}>
                 <BlockEditor key={blockEpoch} ref={blockEditor} initial={workspaceState} language={language} disabled={busy} onUpdate={(snapshot, changed) => {
                   setWorkspaceState(snapshot.workspace); setSource(snapshot.code); setBlockError(snapshot.error); setBlockWarnings(snapshot.warnings); setBlockReady(true);
-                  if (changed) { setBlockRevision(previous => previous + 1); invalidateDiagnostics(language, true); }
+                  if (changed) { contentRevision.current++; setBlockRevision(previous => previous + 1); invalidateDiagnostics(language, true); }
                 }} />
               </Suspense>
             </div>}
@@ -659,6 +702,7 @@ export default function App(): JSX.Element {
                 <CodeEditor ref={codeEditor} session={editorSession} language={language} preview={mode === 'blocks'} disabled={busy}
                   value={source} reports={diagnosticRuns} location={location}
                   onChange={(code, changedLanguage) => {
+                    contentRevision.current++;
                     invalidateDiagnostics(changedLanguage, false);
                     if (mode === 'text' && changedLanguage === language) setSource(code);
                     setTextDrafts(previous => ({ ...previous, [changedLanguage]: code }));
@@ -713,7 +757,7 @@ export default function App(): JSX.Element {
       {confirmation && <ConfirmDialog message={confirmation.message} text={confirmation.text} onAnswer={(answer) => {
         confirmation.resolve(answer);
         setConfirmation(null);
-      }} />}
+      }} onSave={confirmation.save ? () => { confirmation.save!(); setConfirmation(null); } : undefined} />}
     </div>
   );
 }

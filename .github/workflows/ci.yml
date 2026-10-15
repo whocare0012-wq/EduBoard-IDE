@@ -49,6 +49,9 @@ jobs:
       - name: Diagnostic markers and navigation
         if: runner.os == 'Windows'
         run: npm run test:diagnostics
+      - name: Save-and-continue workflow
+        if: runner.os == 'Windows'
+        run: npm run test:unsaved
       - name: Build unsigned Windows preview
         if: runner.os == 'Windows'
         # The checks above already ran; rebuild (test:dev rewrites out/) and package without repeating `npm run check`.
@@ -76,6 +79,11 @@ jobs:
       - name: Packaged diagnostics
         if: runner.os == 'Windows'
         run: npm run test:diagnostics
+        env:
+          EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
+      - name: Packaged save-and-continue workflow
+        if: runner.os == 'Windows'
+        run: npm run test:unsaved
         env:
           EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
       - name: Save preview installer

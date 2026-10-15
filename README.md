@@ -11,7 +11,7 @@
 - Switch directly between **Graphical / C++ / Python**. Independent text models preserve cursor, selection, scroll and undo/redo during the current project session; all source buffers and blocks are saved together.
 - Resize panels with pointer or keyboard controls, collapse output, and show/hide generated code. Narrow workspaces hide the preview automatically until explicitly expanded.
 - Generate Arduino C++ or MicroPython from blocks, preview the result, and explicitly adopt it into a text buffer. Edited text does not automatically convert back to blocks.
-- Create, open and save projects; edit locally with Monaco and Blockly; guard unsaved work and save with Ctrl+S.
+- Create, open and save projects; edit locally with Monaco and Blockly; save with Ctrl+S. Unsaved new/open/close prompts offer Save and continue, Discard, or Cancel; canceled or failed saves keep the current project open.
 - Locate Python syntax and C++ compiler errors with inline markers and clickable output. Navigation restores the matching text buffer or generated preview; edits invalidate old locations, and streamed failures are displayed once.
 - Configure Arduino CLI, select an ESP32 target, compile/upload and use the serial monitor.
 - Configure Python tools, check syntax, execute MicroPython on a board, connect to REPL and transfer device files.

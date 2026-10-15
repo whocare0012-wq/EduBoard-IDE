@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { closeSmoke } from './close-smoke.mjs';
 
 if (!process.env.ARDUINO_CLI_PATH) throw new Error('Set ARDUINO_CLI_PATH to the separately installed real CLI.');
 const require = createRequire(import.meta.url);
@@ -63,6 +64,6 @@ try {
   await page.waitForFunction(() => document.querySelector('.console')?.textContent?.split('[编译] 成功').length === 3, undefined, { timeout: 600_000 });
   console.log('PASS real Arduino CLI: installed boards/ports, Blink compile, actual GCC error marker/link/one-copy output, edit cleanup and repaired compile. Hardware upload and serial acceptance remain pending.');
 } finally {
-  await application.close();
+  await closeSmoke(application);
   await rm(temp, { recursive: true, force: true });
 }

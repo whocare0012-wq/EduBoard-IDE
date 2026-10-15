@@ -12,6 +12,7 @@ npm run test:modes
 npm run test:python
 npm run test:workspace
 npm run test:diagnostics
+npm run test:unsaved
 Remove-Item Env:EDUBOARD_SMOKE_EXE
 npm run package:win
 ```
@@ -20,6 +21,6 @@ npm run package:win
 
 In this maintainer's environment, set `ELECTRON_BUILDER_CACHE` and `electron_config_cache` to directories under `D:\Software\EduBoard-Tools`. Separately provisioned CLI/core data and configuration use that same tool root. Run `scripts/setup-windows-tools.ps1 -InstallEsp32` to verify/install the pinned developer toolchain and `scripts/start-local.ps1` to launch it.
 
-A packaged check exercises bundled editing, independent modes, Python parsing, adaptive panels and diagnostic markers/navigation. It does not replace fresh-machine installation or [physical acceptance](hardware-acceptance.md).
+A packaged check exercises bundled editing, independent modes, Python parsing, adaptive panels, diagnostic markers/navigation and save-before-new/open/close with cancel/failure retention. It does not replace fresh-machine installation or [physical acceptance](hardware-acceptance.md).
 
 Before a stable release, complete physical acceptance, generate exact third-party notices, review the audit, verify uninstall/update behavior, and sign the executable and installer with a maintainer-controlled certificate. Signing secrets never belong in the repository.

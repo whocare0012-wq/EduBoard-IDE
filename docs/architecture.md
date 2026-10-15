@@ -40,6 +40,14 @@ Save snapshots read live text models and retain a later edit as unsaved. Explici
 
 `useWorkspaceLayout.ts` observes the available main region, clamps output height, and chooses automatic preview visibility by region width. Manual choices last for the current application session. `ResizeHandle.tsx` uses pointer capture and keyboard-accessible separators; no global mouse listeners remain after a drag. Hiding output or preview does not dispose the editor models.
 
+## Unsaved project transitions
+
+`prepareToLeave()` gates new, graphical-new, open and close through one three-choice prompt. It checks live editor buffers and block state, saves through the existing main-process persistence API, and continues only after a successful save. Cancellation, declined overwrite and write errors stop the transition without replacing editor sessions or active project paths. A content revision guard stops the transition if an edit arrives while the save is pending. Errors expand output so a collapsed console cannot hide a failed save.
+
+Native `BrowserWindow.close` and application quit produce a main-process close request. The renderer replies through typed, main-frame-authenticated IPC with a one-use request ID. Invalid/replayed IDs cannot authorize a close; repeated delivery of the same intent is ignored while the renderer handles it. The preload ready handshake recovers requests sent before the UI listener mounts. Approval still requires the main operation lock, then releases serial and closes the window; only that approved close may bypass `beforeunload`.
+
+Busy operations reject close intents and remain running until explicitly completed/canceled. `before-quit` routes through the same window flow; process cleanup moves to `will-quit`, after windows actually close, so canceling a quit does not stop a live tool. Closing a macOS window releases serial without requiring the application itself to exit. Close IDs, prompts and decisions remain transient and do not change project format v1.
+
 ## Diagnostics and output
 
 `main/diagnostics.ts` parses GCC-style file/line/column messages from captured tool output. Only a normalized exact primary-file match becomes a structured location; a dependency with the same basename remains ordinary output. Colours and CRLF do not interfere with parsing. Repeated identical locations/messages become one marker, with a 500-location limit. The owned Python bridge catches `SyntaxError` (including indentation errors), emits the same location format, and converts Python character offsets to Monaco UTF-16 columns without executing project code. Older f-string synthetic-expression offsets fall back to the source line's start.

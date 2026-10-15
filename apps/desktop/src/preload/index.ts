@@ -3,6 +3,14 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { EduBoardApi, Sketch, CommandResult, PortsResult, ActionResult, BoardsResult, ToolSettings, PythonToolsResult, DeviceFilesResult, FirmwareInfo } from '../shared/types';
 
 const api: EduBoardApi = {
+  onCloseRequested: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, requestId: string): void => listener(requestId);
+    ipcRenderer.on('window:close-request', handler);
+    // Recover a close request received before the React listener was mounted.
+    void ipcRenderer.invoke('window:close-ready').catch(() => {});
+    return () => ipcRenderer.removeListener('window:close-request', handler);
+  },
+  respondToClose: (requestId, proceed) => ipcRenderer.invoke('window:close-response', requestId, proceed) as Promise<void>,
   cliVersion: () => ipcRenderer.invoke('cli:version') as Promise<CommandResult>,
   ports: () => ipcRenderer.invoke('cli:ports') as Promise<PortsResult>,
   boards: () => ipcRenderer.invoke('cli:boards') as Promise<BoardsResult>,

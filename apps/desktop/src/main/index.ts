@@ -2,6 +2,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { lstat, readFile } from 'node:fs/promises';
 import { basename, dirname, join, posix } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { BoardsResult, CommandResult, FirmwareInfo, PortsResult, Sketch, ToolSettings } from '../shared/types';
 import { atomicWrite, defaultProjectName, exportNeedsConfirmation, generationFailed, normalizeProjectPath, normalizeSketchPath, projectPathForSource, projectSourcePath, readProject, readPythonScript, readSketch, validateSource, writeProject, writeSketch } from './projects';
 import { SENSOR_LIBRARIES, validateProject, type ProjectLanguage } from '../shared/project-format';
@@ -19,6 +20,9 @@ let currentProjectPath: string | null = null;
 let currentLanguage: ProjectLanguage = 'arduino';
 let preparedFirmware: FirmwareInfo | null = null;
 let operationActive = false;
+let closeRequest: string | null = null;
+let closeApproved = false;
+let quitAfterClose = false;
 const settings = new SettingsStore(join(app.getPath('userData'), 'tools.json'));
 const publish = (channel: string, value: unknown): void => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value);
@@ -34,6 +38,7 @@ const python = new MicroPythonService(runner, serial, () => ({ executable: setti
   app.isPackaged ? join(process.resourcesPath, 'tool_bridge.py') : join(app.getAppPath(), 'apps/desktop/resources/tool_bridge.py'), join(app.getPath('temp'), 'eduboard-firmware'));
 
 function assertIdle(): void {
+  if (closeApproved) throw new Error('窗口正在关闭。');
   if (operationActive || runner.busy) throw new Error('已有工具任务正在执行，请等待或取消后再操作。');
 }
 
@@ -141,6 +146,21 @@ async function pythonProject(): Promise<string> {
 }
 
 function registerHandlers(): void {
+  handle('window:close-ready', () => { if (closeRequest) publish('window:close-request', closeRequest); });
+  handle('window:close-response', async (requestId, proceed) => {
+    if (!closeRequest || requestId !== closeRequest || typeof proceed !== 'boolean') throw new Error('关闭请求已失效，请重新关闭窗口。');
+    closeRequest = null; // Consume the request once, before any asynchronous work.
+    if (!proceed) { quitAfterClose = false; return; }
+    try {
+      await operation(async () => {
+        await serial.stop();
+        const window = mainWindow;
+        closeApproved = true;
+        // Let the IPC reply finish before the renderer is destroyed.
+        setImmediate(() => { if (window && !window.isDestroyed()) window.close(); });
+      });
+    } catch (error) { quitAfterClose = false; throw error; }
+  });
   handle('cli:version', () => readCli(['version']));
   handle('cli:ports', async (): Promise<PortsResult> => {
     const result = await readCli(['board', 'list', '--format', 'json']);
@@ -267,6 +287,7 @@ function registerHandlers(): void {
 }
 
 function createWindow(): void {
+  closeRequest = null; closeApproved = false; quitAfterClose = false;
   mainWindow = new BrowserWindow({
     width: 1280, height: 820, minWidth: 860, minHeight: 600, title: 'EduBoard IDE',
     backgroundColor: '#0f1318', autoHideMenuBar: true,
@@ -274,16 +295,17 @@ function createWindow(): void {
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.on('close', event => {
+    if (closeApproved) return;
+    event.preventDefault();
+    if (!closeRequest) { closeRequest = randomUUID(); publish('window:close-request', closeRequest); }
+  });
   mainWindow.webContents.on('will-prevent-unload', (event) => {
-    const choice = dialog.showMessageBoxSync({
-      type: 'warning', title: '尚有未保存内容', message: '关闭会丢失未保存的内容或中断工具任务。',
-      detail: '选择取消可返回编辑器保存项目。', buttons: ['取消', '放弃并关闭'], defaultId: 0, cancelId: 0
-    });
-    if (choice === 1) event.preventDefault();
+    if (closeApproved) event.preventDefault();
   });
   if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => { mainWindow = null; closeRequest = null; closeApproved = false; });
 }
 
 app.whenReady().then(async () => {
@@ -296,9 +318,17 @@ app.whenReady().then(async () => {
 }).catch(error => { dialog.showErrorBox('EduBoard IDE 启动失败', String(error)); app.quit(); });
 
 let quitting = false;
+let cleanupStarted = false;
 app.on('before-quit', (event) => {
+  if (mainWindow && !closeApproved) {
+    event.preventDefault(); quitAfterClose = true; mainWindow.close();
+  }
+});
+app.on('will-quit', (event) => {
   if (quitting) return;
   event.preventDefault();
+  if (cleanupStarted) return;
+  cleanupStarted = true;
   void Promise.allSettled([runner.cancel(), serial.stop()]).then(() => { quitting = true; app.quit(); });
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => { if (process.platform !== 'darwin' || quitAfterClose) app.quit(); });

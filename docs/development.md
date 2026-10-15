@@ -7,7 +7,7 @@ The following instructions target **Windows 10/11** and Node.js **22 or later**.
 2. Install [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/) separately.
 3. Clone this repository.
 4. Run `npm ci` and `npm run dev`.
-5. Run `npm run check` before committing a development milestone. It includes type checks, unit checks, bundling, offline Electron foundation / Blockly / three-mode / workspace / diagnostics / Python workflows, and generated Python syntax checks. Python 3.11+ is required; hardware is not.
+5. Run `npm run check` before committing a development milestone. It includes type checks, unit checks, bundling, offline Electron foundation / Blockly / three-mode / workspace / diagnostics / unsaved-content / Python workflows, and generated Python syntax checks. Python 3.11+ is required; hardware is not.
 
 Monaco and its language assets are bundled locally. Editing and saving do not need an internet connection. The desktop check deliberately disables networking and replaces only native file dialogs; project writes still run through the actual restricted IPC bridge and main-process filesystem code.
 
@@ -56,6 +56,10 @@ See [MicroPython setup](micropython.md). `scripts/setup-python-tools.ps1` instal
 Desktop smoke checks set the renderer viewport explicitly to 1280×820; the workspace check also switches it to 860×600. Hosted Windows runners can have a smaller screen than the requested native window, so a native window-size request alone does not establish a wide-layout test. The dedicated narrow case verifies automatic preview hiding separately.
 
 `npm run test:diagnostics` uses the real Python AST bridge and an explicit compiler log/transport fixture through the real main-process runner. It checks UTF-16 columns after emoji, fragmented/coloured compiler output, primary-file filtering, one-copy failures, actual Monaco markers, mouse/keyboard jumps across modes, preview isolation, narrow preview expansion, and invalidation after edits, successful checks, new/open. It is included in unified checks and source/packaged Windows CI. The compiler fixture is not compiler or hardware acceptance; use `test:arduino` for actual GCC evidence. Unit checks cover bounded output, check identity and cancellation/timeout/missing-tool summaries.
+
+`npm run test:unsaved` exercises real saves, `BrowserWindow.close()` and `app.quit()` against isolated temporary projects. It covers saving both text drafts plus blocks before new/open, canceled Save As / overwrite / open dialogs, real filesystem write failures, visible failure feedback with collapsed output, retrying close, clean graphical close, explicit discard, keyboard focus, repeated/redelivered close requests and rejected token replay. Long-lived Node transport fixtures prove a rejected quit leaves the owned task running, a canceled/failed close keeps serial alive, and approved close waits for serial exit and actual application termination before teardown. These fixtures are not hardware or real compiler tests. Source and packaged Windows CI both run this workflow.
+
+Other desktop checks use `close-smoke.mjs` only for teardown: after assertions it destroys their isolated test windows, then lets normal process cleanup run. The dedicated unsaved-content workflow tests user closing through actual close/quit events before teardown. No production auto-approval or test-only close bypass is exposed.
 
 ## Troubleshooting
 - `ENOENT` or CLI not found: install Arduino CLI or set ARDUINO_CLI_PATH.
