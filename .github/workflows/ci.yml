@@ -45,7 +45,8 @@ jobs:
         run: npm run test:python-examples
       - name: Build unsigned Windows preview
         if: runner.os == 'Windows'
-        run: npm run package:win
+        # The checks above already ran; rebuild (test:dev rewrites out/) and package without repeating `npm run check`.
+        run: npm run package:win:fast
       - name: Packaged desktop workflow
         if: runner.os == 'Windows'
         run: npm run test:desktop

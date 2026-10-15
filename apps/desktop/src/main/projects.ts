@@ -85,6 +85,26 @@ export function projectSourcePath(projectPath: string, language: ProjectDocument
   return join(dirname(projectPath), language === 'arduino' ? name + '.ino' : 'main.py');
 }
 
+export function generationFailed(document: ProjectDocument): boolean {
+  return document.mode === 'blocks' && document.source === '';
+}
+
+/** Text this project last saved for a language, i.e. what its export file should contain. */
+export function savedSourceFor(document: ProjectDocument, language: ProjectDocument['language']): string | null {
+  if (document.language === language) return generationFailed(document) ? null : document.source;
+  return document.drafts?.[language] ?? null;
+}
+
+/** An Arduino sketch already sits in its same-named folder, so its project can live beside it. */
+export function projectPathForSource(sourcePath: string): string | null {
+  if (extname(sourcePath).toLowerCase() !== '.ino') return null;
+  return normalizeProjectPath(join(dirname(sourcePath), parse(sourcePath).name + '.eduboard.json'));
+}
+
+export function defaultProjectName(sourcePath: string, fallback: string): string {
+  try { return validateSketchName(parse(sourcePath).name); } catch { return fallback; }
+}
+
 export async function readProject(projectPath: string): Promise<Sketch> {
   const info = await lstat(projectPath);
   if (!info.isFile() || info.isSymbolicLink() || info.size > 4_000_000) throw new Error('项目须为小于 4 MB 的普通文件。');
@@ -98,7 +118,8 @@ export async function writeProject(projectPath: string, value: unknown): Promise
   const encoded = JSON.stringify(document, null, 2) + '\n';
   if (Buffer.byteLength(encoded, 'utf8') > 4_000_000) throw new Error('项目保存文件须小于 4 MB。');
   // JSON is the authoritative project. Its source is also exported for external compilers.
-  await atomicWrite(sourcePath, document.source);
+  // Blocks that fail to generate save an empty source; keep the last good export instead of truncating it.
+  if (!generationFailed(document)) await atomicWrite(sourcePath, document.source);
   await atomicWrite(projectPath, encoded);
   return { filePath: sourcePath, name: basename(projectPath), source: document.source, document, projectPath };
 }

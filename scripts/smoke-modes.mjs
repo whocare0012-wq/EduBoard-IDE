@@ -59,7 +59,7 @@ try {
   await page.locator('.code-pane .view-lines').filter({ hasText: 'delay(500)' }).waitFor();
   await switchTo('C++'); await page.locator('.view-lines').filter({ hasText: 'C++ preserved' }).waitFor();
   await page.getByRole('button', { name: '从积木更新代码', exact: true }).click();
-  await page.getByRole('dialog').waitFor(); await page.getByRole('button', { name: '放弃更改并继续', exact: true }).click(); await ready();
+  await page.getByRole('dialog').filter({ hasText: '替换文本代码？' }).waitFor(); await page.getByRole('button', { name: '替换代码', exact: true }).click(); await ready();
   await showEnd();
   await page.locator('.code-pane .view-lines').filter({ hasText: 'delay(500)' }).waitFor();
   await switchTo('Python'); await page.locator('.view-lines').filter({ hasText: 'Python preserved' }).waitFor();
