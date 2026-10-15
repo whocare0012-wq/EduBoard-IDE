@@ -88,3 +88,4 @@ Physical flashing, device execution/REPL/files, upload/serial and fresh-machine 
 - Screenshots of the actual wide/narrow workflows were inspected. No physical device operation was performed; hardware and fresh-machine gates remain pending.
 - Real Blink compilation through the updated desktop passed with Arduino CLI 1.5.1 / ESP32 core 3.3.12. The alpha.2 packaged executable passed offline desktop, Python and workspace checks, including the new editor and resizers.
 - Latest preview: `release/EduBoard-IDE-0.3.0-alpha.2-Windows-x64-Setup.exe`, 112368663 bytes; SHA-256 `e5cf87a9c83fafd13c03f4b7a48ed44263c1bdd9632a97bfb1e1759cfd2db2e1`; Authenticode `NotSigned`. The lockfile-only install/audit reported zero vulnerabilities; no new development tools were needed.
+- Development startup also passed. This follow-up is committed on the existing `feat/ui-redesign` branch; CI also runs on `feat/**` pushes so the interface work is checked before integration.
