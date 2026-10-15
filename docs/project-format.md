@@ -31,3 +31,5 @@ Numeric variables use C++ doubles or Python numbers. Orphan blocks warn; duplica
 Each file is saved by atomic rename. The active source export is written first, JSON last. A failure does not update active paths or mark the UI saved. This is not a transaction across both files; if interrupted, reopen JSON and save to restore the source export. Compiler/run handlers reject a source export inconsistent with the JSON.
 
 Documents contain no host executable paths. Tool selections are local application preferences.
+
+Editor cursor/selection/scroll state and undo/redo remain in memory for the current project session. They survive mode switches but reset on new/open and are not serialized. Panel sizes and visibility are also application-session preferences. These UI changes do not alter format v1.

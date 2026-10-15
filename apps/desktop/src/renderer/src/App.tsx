@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import Editor from '@monaco-editor/react';
 import type { BoardInfo, CommandResult, PortInfo, Sketch, ToolSettings } from '../../shared/types';
-import { EDITOR_THEME } from './editor';
+import CodeEditor, { type CodeEditorHandle } from './CodeEditor';
+import ResizeHandle from './ResizeHandle';
+import useWorkspaceLayout from './useWorkspaceLayout';
 import { icons } from './icons';
 import ConfirmDialog, { DISCARD_TEXT, type ConfirmText } from './ConfirmDialog';
 import type { BlockEditorHandle } from './BlockEditor';
 import type { ProjectDocument, ProjectLanguage, ProjectMode, TextDrafts, WorkspaceState } from '../../shared/project-format';
-import { TEMPLATES, microTemplate } from '../../shared/blocks/templates';
+import { TEMPLATES, examplePins, microTemplate } from '../../shared/blocks/templates';
 import { MICRO_BOARDS, type MicroBoardId } from '../../shared/boards';
 import MicroPythonPane from './MicroPythonPane';
 
@@ -53,6 +54,10 @@ const STARTER = [
   ''
 ].join('\n');
 const PY_STARTER = '# EduBoard IDE - MicroPython\n# Use an external LED on GPIO2; adjust for your board.\nfrom machine import Pin\nimport time\n\nled = Pin(2, Pin.OUT)\nwhile True:\n    led.value(1)\n    print("LED ON")\n    time.sleep_ms(1000)\n    led.value(0)\n    print("LED OFF")\n    time.sleep_ms(1000)\n';
+const pythonStarter = (board: MicroBoardId): string => {
+  const pin = examplePins('micropython', board).led;
+  return PY_STARTER.replace('GPIO2', 'GPIO' + pin).replace('Pin(2,', 'Pin(' + pin + ',');
+};
 
 function displayResult(action: string, result: CommandResult): string {
   return [
@@ -63,6 +68,9 @@ function displayResult(action: string, result: CommandResult): string {
 }
 
 export default function App(): JSX.Element {
+  const layout = useWorkspaceLayout();
+  const [editorSession, setEditorSession] = useState(0);
+  const codeEditor = useRef<CodeEditorHandle>(null);
   const [source, setSource] = useState(STARTER);
   const [language, setLanguage] = useState<ProjectLanguage>('arduino');
   const [microBoardId, setMicroBoardId] = useState<MicroBoardId>('esp32');
@@ -213,6 +221,7 @@ export default function App(): JSX.Element {
   }
 
   function applySketch(sketch: Sketch): void {
+    setEditorSession(previous => previous + 1);
     setSource(sketch.source);
     setFilePath(sketch.filePath);
     setProjectPath(sketch.projectPath || '');
@@ -237,16 +246,20 @@ export default function App(): JSX.Element {
   async function save(): Promise<boolean> {
     const blocks = mode === 'blocks' ? blockEditor.current?.snapshot() : null;
     if (mode === 'blocks' && !blocks) throw new Error('请等待积木编辑器加载完成。');
+    const liveDrafts = { ...textDrafts, ...codeEditor.current?.drafts() };
+    const liveSource = mode === 'text' ? liveDrafts[language] ?? source : source;
+    setTextDrafts(liveDrafts);
+    if (mode === 'text') setSource(liveSource);
     const document: ProjectDocument = { format: 'eduboard-project', version: 1, language, mode,
-      source: blocks ? blocks.code : source, fqbn: fqbn.trim(), workspace: blocks ? blocks.workspace : workspaceState,
-      microBoard: microBoardId, drafts: textDrafts, blockTarget };
+      source: blocks ? blocks.code : liveSource, fqbn: fqbn.trim(), workspace: blocks ? blocks.workspace : workspaceState,
+      microBoard: microBoardId, drafts: liveDrafts, blockTarget };
     const otherLanguage = language === 'arduino' ? 'micropython' : 'arduino';
-    const result = mode === 'text' && filePath && !projectPath && !workspaceState && textDrafts[otherLanguage] === null
-      ? await window.eduboard.saveSketch(source) : await window.eduboard.saveProject(document);
+    const result = mode === 'text' && filePath && !projectPath && !workspaceState && liveDrafts[otherLanguage] === null
+      ? await window.eduboard.saveSketch(liveSource) : await window.eduboard.saveProject(document);
     if (!result) return false;
     setFilePath(result.filePath);
-    setSource(result.source);
-    setSavedDrafts(textDrafts);
+    setSource(current => current === liveSource ? result.source : current);
+    setSavedDrafts(liveDrafts);
     if (blocks) setWorkspaceState(blocks.workspace);
     setProjectPath(result.projectPath || '');
     setSavedFqbn(fqbn);
@@ -259,6 +272,7 @@ export default function App(): JSX.Element {
   }
 
   function resetProject(nextSource: string, nextMode: ProjectMode, nextWorkspace: WorkspaceState | null): void {
+    setEditorSession(previous => previous + 1);
     setFilePath(''); setProjectPath(''); setSource(nextSource);
     const drafts: TextDrafts = { arduino: null, micropython: null };
     if (nextMode === 'text') drafts[language] = nextSource;
@@ -308,7 +322,7 @@ export default function App(): JSX.Element {
         nextWorkspace ||= nextLanguage === 'arduino' ? template.createWorkspace() : microTemplate(template, microBoardId);
         nextSource = await generated(nextWorkspace, nextLanguage, true);
       } else {
-        nextSource = textDrafts[nextLanguage] ?? (state ? await generated(state, nextLanguage) : nextLanguage === 'arduino' ? STARTER : PY_STARTER.replace('Pin(2,', microBoardId === 'esp32c3' ? 'Pin(3,' : 'Pin(2,'));
+        nextSource = textDrafts[nextLanguage] ?? (state ? await generated(state, nextLanguage) : nextLanguage === 'arduino' ? STARTER : pythonStarter(microBoardId));
       }
       if (nextLanguage !== language) await window.eduboard.stopMonitor();
       if (target !== 'blocks' && textDrafts[nextLanguage] === null) setTextDrafts(previous => ({ ...previous, [nextLanguage]: nextSource }));
@@ -334,6 +348,7 @@ export default function App(): JSX.Element {
 
   async function checkPython(): Promise<void> {
     await withBusy(async () => {
+      layout.setOutputOpen(true);
       if (!(await save())) return;
       append(displayResult('语法检查', await window.eduboard.checkPython()));
     });
@@ -341,6 +356,7 @@ export default function App(): JSX.Element {
 
   async function runPython(): Promise<void> {
     await withBusy(async () => {
+      layout.setOutputOpen(true);
       if (!port.trim()) { append('[运行] 请先选择实际开发板的串口。'); return; }
       if (!(await save())) return;
       append(displayResult('运行 MicroPython', await window.eduboard.runPython(port.trim(), baud)));
@@ -349,6 +365,7 @@ export default function App(): JSX.Element {
 
   async function compile(): Promise<void> {
     await withBusy(async () => {
+      layout.setOutputOpen(true);
       if (mode === 'blocks' && (!blockReady || blockError)) throw new Error(blockError || '积木尚未准备好。');
       if (!(await save())) return;
       append('[编译中] ' + fqbn);
@@ -359,6 +376,7 @@ export default function App(): JSX.Element {
 
   async function upload(): Promise<void> {
     await withBusy(async () => {
+      layout.setOutputOpen(true);
       if (mode === 'blocks' && (!blockReady || blockError)) throw new Error(blockError || '积木尚未准备好。');
       if (!port.trim()) {
         append('[上传] 请先填写或选择串口，例如 COM3。');
@@ -377,6 +395,7 @@ export default function App(): JSX.Element {
 
   async function toggleMonitor(): Promise<void> {
     await withBusy(async () => {
+      layout.setOutputOpen(true);
       if (monitoring) {
         await window.eduboard.stopMonitor();
         append('[串口] 已停止监视');
@@ -426,7 +445,7 @@ export default function App(): JSX.Element {
           <button className="btn ghost collapse-able" aria-label="新建" title="新建项目" disabled={busy} onClick={() => void withBusy(async () => {
             if (!(await discardIfNeeded())) return;
             await window.eduboard.newSketch(language);
-            resetProject(language === 'arduino' ? STARTER : PY_STARTER, 'text', null);
+            resetProject(language === 'arduino' ? STARTER : pythonStarter(microBoardId), 'text', null);
           })}>{icons.newFile}<span className="label-collapse">新建</span></button>
           <button className="btn ghost collapse-able" aria-label="打开" title="打开项目或源程序" disabled={busy} onClick={() => void withBusy(async () => {
             if (!(await discardIfNeeded())) return;
@@ -502,7 +521,8 @@ export default function App(): JSX.Element {
                 <details className="disclosure">
                   <summary>接线说明</summary>
                   <div className="disclosure-body">
-                    <ul className="wiring">{template.wiring.map(line => <li key={line}>{line}</li>)}</ul>
+                    <p className="hint">所选板型下新建示例的默认接线；已修改程序请以实际引脚为准。</p>
+                    <ul className="wiring">{template.wiring(examplePins(language, microBoardId)).map(line => <li key={line}>{line}</li>)}</ul>
                     {template.libraries.length > 0 && <p className="hint">依赖：{template.libraries.join('、')}</p>}
                   </div>
                 </details>
@@ -556,7 +576,7 @@ export default function App(): JSX.Element {
           </div>
         </aside>}
 
-        <main className="main">
+        <main className="main" ref={layout.region}>
           <div className="section-head">
             <nav className="mode-tabs" aria-label="开发模式">
               <button aria-pressed={mode === 'blocks'} disabled={busy} title="图形化积木（切换保留各模式内容）" onClick={() => void switchMode('blocks')}>{icons.blocks}图形化</button>
@@ -579,8 +599,11 @@ export default function App(): JSX.Element {
           {mode === 'blocks' && <div className={'block-message' + (blockError ? ' error' : blockWarnings.length ? ' warning' : '')} role={blockError ? 'alert' : undefined}>
             {blockError ? icons.warning : blockWarnings.length ? icons.warning : icons.info}
             <span>{blockError || blockWarnings.join(' · ') || '积木单向生成代码。采用生成代码可更新文本工作区；三个模式的内容分别保留。'}</span>
+            <button className="btn ghost" aria-pressed={layout.previewVisible} disabled={busy} onClick={layout.togglePreview}>
+              {layout.previewVisible ? '隐藏代码预览' : '显示代码预览'}
+            </button>
           </div>}
-          <div className={'editor' + (mode === 'blocks' ? ' editors-split' : '')}>
+          <div className={'editor' + (mode === 'blocks' && layout.previewVisible ? ' editors-split' : '')}>
             {mode === 'blocks' && workspaceState && <div className="blocks-pane">
               <Suspense fallback={<p className="hint" style={{ padding: 16 }}>正在加载本地积木编辑器…</p>}>
                 <BlockEditor key={blockEpoch} ref={blockEditor} initial={workspaceState} language={language} disabled={busy} onUpdate={(snapshot, changed) => {
@@ -589,29 +612,29 @@ export default function App(): JSX.Element {
                 }} />
               </Suspense>
             </div>}
-            <div className="code-pane">
+            {mode === 'blocks' && layout.previewVisible && <ResizeHandle label="调整代码预览宽度" orientation="vertical"
+              value={layout.previewPercent} min={layout.minPreview} max={layout.maxPreview} step={5} unitsPerPixel={layout.previewUnitsPerPixel}
+              onChange={layout.resizePreview} onReset={layout.resetPreview} />}
+            <div className={'code-pane' + (mode === 'blocks' && !layout.previewVisible ? ' preview-hidden' : '')}
+              style={mode === 'blocks' ? { flexBasis: layout.previewPercent + '%' } : undefined}>
               {mode === 'blocks' && <div className="pane-label">{icons.code}生成代码<span className="pill">只读</span></div>}
               <div className="monaco-host">
-                <Editor
-                  key={blockEpoch + ':' + mode + ':' + language}
-                  height="100%"
-                  language={language === 'arduino' ? 'cpp' : 'python'}
-                  theme={EDITOR_THEME}
+                <CodeEditor ref={codeEditor} session={editorSession} language={language} preview={mode === 'blocks'} disabled={busy}
                   value={source}
-                  onChange={(value) => { if (mode === 'text') { const code = value ?? ''; setSource(code); setTextDrafts(previous => ({ ...previous, [language]: code })); } }}
-                  loading={<p className="hint">正在加载本地编辑器…</p>}
-                  options={{ minimap: { enabled: false }, fontSize: 14, lineHeight: 22, fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace', fontLigatures: false,
-                    padding: { top: 12, bottom: 12 }, automaticLayout: true, tabSize: 2, readOnly: busy || mode === 'blocks', accessibilitySupport: 'on', editContext: false,
-                    renderLineHighlight: 'all', smoothScrolling: true, cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on', roundedSelection: true, guides: { indentation: true },
-                    scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false }, overviewRulerBorder: false, overviewRulerLanes: 0, hideCursorInOverviewRuler: true, lineNumbersMinChars: 3,
-                    ariaLabel: mode === 'blocks' ? '生成代码预览' : language === 'arduino' ? 'Arduino C++ 代码编辑器' : 'MicroPython 代码编辑器', scrollBeyondLastLine: false }}
+                  onChange={(code, changedLanguage) => {
+                    if (mode === 'text' && changedLanguage === language) setSource(code);
+                    setTextDrafts(previous => ({ ...previous, [changedLanguage]: code }));
+                  }}
                 />
               </div>
             </div>
           </div>
-          <section className="output" aria-label="输出">
+          {layout.outputOpen && <ResizeHandle label="调整输出高度" orientation="horizontal" value={layout.outputHeight} min={112} max={layout.maxOutput}
+            step={16} onChange={layout.resizeOutput} onReset={layout.resetOutput} />}
+          <section className={'output' + (layout.outputOpen ? '' : ' collapsed')} aria-label="输出" style={{ height: layout.outputOpen ? layout.outputHeight : 36 }}>
             <div className="console-header">
-              <span className="console-title">{icons.terminal}{language === 'arduino' ? '输出 / 串口监视器' : '输出 / MicroPython REPL'}</span>
+              <span className="console-title">{icons.terminal}<span className="title-long">{language === 'arduino' ? '输出 / 串口监视器' : '输出 / MicroPython REPL'}</span>
+                <span className="title-short">{language === 'arduino' ? '输出' : 'REPL'}</span></span>
               <div className="row">
                 <select aria-label="串口波特率" className="select" value={baud} disabled={busy || monitoring} onChange={(e) => setBaud(Number(e.target.value))}>
                   <option value={9600}>9600 baud</option>
@@ -621,14 +644,18 @@ export default function App(): JSX.Element {
                 <button className={'btn' + (monitoring ? '' : ' primary')} disabled={busy} onClick={() => void toggleMonitor()}>{monitoring ? icons.unplug : icons.plug}{monitoring ? '关闭串口' : language === 'arduino' ? '打开串口' : '连接 REPL'}</button>
                 {language === 'micropython' && <button className="btn" disabled={busy || !monitoring} onClick={() => void withBusy(async () => { await window.eduboard.interruptPython(); append('[REPL] 已发送中断，请查看设备响应。'); })}>{icons.interrupt}中断设备程序</button>}
                 <button className="btn ghost" title="清空输出" onClick={() => setConsoleText('')}>{icons.clear}清空</button>
+                <button className="btn ghost output-toggle" aria-label={layout.outputOpen ? '收起输出' : '展开输出'} aria-expanded={layout.outputOpen}
+                  onClick={() => layout.setOutputOpen(!layout.outputOpen)}>{layout.outputOpen ? '收起' : '展开'}</button>
               </div>
             </div>
+            <div className="output-content" hidden={!layout.outputOpen}>
             <pre className="console" ref={consoleRef}>{consoleText ? consoleLines.map((line, index) => <span key={index} className={consoleClasses[index]}>{line}{index < consoleLines.length - 1 ? '\n' : ''}</span>) : <span className="console-empty">暂无输出</span>}</pre>
             <div className="serial-input">
               <input className="input" aria-label="串口发送文本" placeholder={monitoring ? '向串口发送文本，按 Enter 发送' : '连接串口后可发送文本'} value={serialInput} disabled={!monitoring || busy} onKeyDown={(e) => {
                 if (e.key === 'Enter') void sendSerial();
               }} onChange={(e) => setSerialInput(e.target.value)} />
               <button className="btn" disabled={!monitoring || busy} onClick={() => void sendSerial()}>{icons.send}发送</button>
+            </div>
             </div>
           </section>
         </main>

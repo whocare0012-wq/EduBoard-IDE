@@ -76,4 +76,15 @@ Physical flashing, device execution/REPL/files, upload/serial and fresh-machine 
 - [Code review](code-review.md) records the applied loading optimization, early device-argument validation, generation-error repair and port-sensitive file-list state, with further maintenance opportunities.
 - Monaco still includes editor commands, while only C++/Python languages are registered. Renderer assets dropped from 28,585,013 bytes in 97 files to 10,197,043 bytes in 8 files (64.3% smaller).
 - The optimization regression passed through `npm run package:win`: all unified software checks and the NSIS build. The packaged executable separately passed offline desktop editing, three-mode persistence/error repair and Python parsing/firmware cancellation. Development startup also passed.
-- Latest local preview: `release/EduBoard-IDE-0.3.0-alpha.1-Windows-x64-Setup.exe`, 112724656 bytes; SHA-256 `c19b5172eec5511090d1ff0366ebc96c85db0319021f90074ffe5dd6223cf77c`; Authenticode `NotSigned`. No physical hardware operation was performed.
+- Preview at that milestone: `release/EduBoard-IDE-0.3.0-alpha.1-Windows-x64-Setup.exe`, 112724656 bytes; SHA-256 `c19b5172eec5511090d1ff0366ebc96c85db0319021f90074ffe5dd6223cf77c`; Authenticode `NotSigned`. No physical hardware operation was performed.
+
+## Scoped UI follow-up / 0.3.0-alpha.2 (2026-10-15)
+
+- Preserve the redesigned dark UI from `64221be`. Scope is the maintainer's three selected improvements: C3 wiring, editor state and adaptive panels.
+- LED/button workspaces and wiring share one pin configuration (C3 MicroPython LED3/button5); classic defaults remain unchanged. Fresh C3 Python starter text also uses the same LED pin. Existing edited programs are not remapped.
+- Independent text/preview models retain cursor, selection, scroll and undo/redo across mode switches. Generated-code adoption remains undoable; new/open starts a separate session and disposes old models. Saving reads the live text buffers and does not discard a later edit.
+- Output can collapse and resize; generated preview automatically hides in narrow editing regions, with a manual override. Both separators support pointer drag, arrow keys, Home/End and double-click reset. Narrow REPL headers remain inside the toolbar.
+- `npm run check` passed with 22 unit checks, offline foundation/blocks/modes/workspace/Python workflows, production build and 16 generated Python syntax cases. All four real catalogue firmware images passed their metadata checks. The workspace check covers model isolation, undo/redo, adoption, C3 LED/button wiring and 860×600 controls; source and packaged Windows CI include it.
+- Screenshots of the actual wide/narrow workflows were inspected. No physical device operation was performed; hardware and fresh-machine gates remain pending.
+- Real Blink compilation through the updated desktop passed with Arduino CLI 1.5.1 / ESP32 core 3.3.12. The alpha.2 packaged executable passed offline desktop, Python and workspace checks, including the new editor and resizers.
+- Latest preview: `release/EduBoard-IDE-0.3.0-alpha.2-Windows-x64-Setup.exe`, 112368663 bytes; SHA-256 `e5cf87a9c83fafd13c03f4b7a48ed44263c1bdd9632a97bfb1e1759cfd2db2e1`; Authenticode `NotSigned`. The lockfile-only install/audit reported zero vulnerabilities; no new development tools were needed.

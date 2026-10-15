@@ -51,6 +51,8 @@ See [MicroPython setup](micropython.md). `scripts/setup-python-tools.ps1` instal
 
 `npm run test:arduino` compiles a real Blink through the UI. `npm run test:examples` compiles all five generated C++ examples; both require the separately installed ESP32 core and libraries. `npm run test:serial-bridge` requires pyserial and checks the real Python bridge with in-memory loopback. `EDUBOARD_FIRMWARE_DIR` optionally verifies all four real catalogue images and exercises canceled flashing in the Python UI check. No acceptance script uploads or flashes real hardware.
 
+`npm run test:workspace` uses real offline Electron input to check independent cursor/selection/scroll, undo/redo, undoable code adoption, new/open session isolation, C3 wiring, 860×600 layout, panel collapse, pointer/keyboard resizing and automatic preview restoration. It is part of `npm run check` and both source/packaged Windows CI. All test projects and dialogs are isolated from normal application preferences and user files.
+
 ## Troubleshooting
 - `ENOENT` or CLI not found: install Arduino CLI or set ARDUINO_CLI_PATH.
 - Unknown FQBN or missing platform: install the appropriate board core.

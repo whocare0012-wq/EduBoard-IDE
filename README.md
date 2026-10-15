@@ -8,13 +8,14 @@
 
 ## Features
 
-- Switch directly between **Graphical / C++ / Python**. Each text buffer and the block layout remain independent and are saved together in an EduBoard project.
+- Switch directly between **Graphical / C++ / Python**. Independent text models preserve cursor, selection, scroll and undo/redo during the current project session; all source buffers and blocks are saved together.
+- Resize panels with pointer or keyboard controls, collapse output, and show/hide generated code. Narrow workspaces hide the preview automatically until explicitly expanded.
 - Generate Arduino C++ or MicroPython from blocks, preview the result, and explicitly adopt it into a text buffer. Edited text does not automatically convert back to blocks.
 - Create, open and save projects; edit locally with Monaco and Blockly; guard unsaved work and save with Ctrl+S.
 - Configure Arduino CLI, select an ESP32 target, compile/upload and use the serial monitor.
 - Configure Python tools, check syntax, execute MicroPython on a board, connect to REPL and transfer device files.
 - Validate supported official ESP32 firmware before flashing, with explicit confirmation and chip/capacity/security checks.
-- Use LED, button, DHT11, OLED (C++), and NeoPixel examples with wiring notes.
+- Use LED, button, DHT11, OLED (C++), and NeoPixel examples with wiring notes. C3 MicroPython LED3/button5 defaults share the same pin configuration as their displayed wiring.
 
 Core editing requires no account or network. Toolchains, board packages, libraries and firmware must be provisioned separately. The project focuses on IDE functionality.
 

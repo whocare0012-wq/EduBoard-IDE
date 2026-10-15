@@ -10,6 +10,7 @@ import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 loader.config({ monaco });
+export { monaco };
 
 // Mirrors the CSS design tokens in styles.css so the editor sits flush with the surrounding UI.
 export const EDITOR_THEME = 'eduboard-dark';

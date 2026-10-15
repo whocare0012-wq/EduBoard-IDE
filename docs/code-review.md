@@ -13,12 +13,20 @@ Review follows the unified V0.3 software acceptance. Scope is the pure developme
 
 On the same checkout, pinned dependencies and production build settings, the sum of files under `out/renderer/assets` changed from **28,585,013 bytes / 97 files** to **10,197,043 bytes / 8 files**, a **64.3%** reduction. This measures renderer assets on disk, not installer size, memory use or a startup benchmark. The Electron runtime remains the dominant installer component.
 
-The unified check covers type checking, 16 unit checks, build, offline Electron foundation / blocks / modes / Python workflows, and 16 generated Python syntax cases. Firmware checks additionally use four real catalogue images when configured; serial bridge checks use in-memory pyserial loopback. No physical board is written by these checks.
+The current unified check covers type checking, 22 unit checks, build, offline Electron foundation / blocks / modes / workspace / Python workflows, and 16 generated Python syntax cases. Firmware checks additionally use four real catalogue images when configured; serial bridge checks use in-memory pyserial loopback. No physical board is written by these checks.
+
+## UI follow-up: 0.3.0-alpha.2
+
+- C3 LED/button wiring and fresh program generation use a shared pin configuration. Existing user workspaces are not rewritten when selecting a board.
+- `CodeEditor.tsx` owns separate C++ / Python text models and generated preview models. It retains view state and native undo/redo across modes, tracks asynchronous changes even for an inactive text model, and disposes old models when starting/opening a project. Programmatic adoption uses undoable model operations while task controls are read-only.
+- Saving reads live text models, records the saved snapshot, and preserves a later edit instead of marking it saved or reverting it. Source exports and project JSON keep the existing main-process safeguards.
+- Adaptive panels default to a smaller output height and hide preview in narrow workspaces. Output/preview dividers support pointer and keyboard resizing; output and preview can be collapsed without disposing editor models. A container query keeps the REPL toolbar on one line.
+- The dedicated workspace smoke check exercises these behaviors through the UI, including undo after generation/adoption and project-session isolation.
 
 ## Further maintenance opportunities
 
 - Extract project state and save/switch operations from `App.tsx` into a dedicated hook. Keep the three-mode regression as the acceptance gate for that refactor.
-- Reuse per-language Monaco models to preserve cursor position and undo history across switches. Current code content is preserved, but editor remounts reset those transient editor details.
+- Complete the remaining audit suggestions separately: diagnostic navigation, project/export labels, save-and-continue and setup/help entry points. These were not part of this scoped UI follow-up.
 - Add hardware evidence to board adapters: exact module revisions, pin constraints, USB behavior and validated firmware variants. This needs the real devices listed in the hardware acceptance document.
 
 These are follow-up improvements, not implemented capabilities. No general rewrite is required for the current checked software target.

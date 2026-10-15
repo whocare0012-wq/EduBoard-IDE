@@ -158,8 +158,8 @@ details.disclosure > summary:hover { background: var(--surface-3); border-radius
 .device-files .icon { color: var(--text-3); }
 
 /* Editor */
-.main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.section-head { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px 0 8px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
+.main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; container-name: workspace; }
+.section-head { display: flex; flex-shrink: 0; align-items: center; gap: 10px; height: 40px; padding: 0 10px 0 8px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
 .mode-tabs { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--radius); background: var(--surface-0); border: 1px solid var(--border); }
 .mode-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font-size: 12.5px; font-weight: 500; cursor: pointer; }
 .mode-tabs button:hover:not(:disabled) { color: var(--text); background: var(--surface-3); }
@@ -175,7 +175,9 @@ details.disclosure > summary:hover { background: var(--surface-3); border-radius
 .save-state.dirty { color: #f0c674; }
 .save-state.dirty .dot { color: var(--warning); }
 .save-state.new .dot { color: var(--text-3); }
-.block-message { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--surface-1); border-bottom: 1px solid var(--border); color: var(--text-2); font-size: 12px; }
+.block-message { display: flex; flex-shrink: 0; align-items: center; gap: 8px; padding: 6px 12px; background: var(--surface-1); border-bottom: 1px solid var(--border); color: var(--text-2); font-size: 12px; }
+.block-message > span { flex: 1; min-width: 0; }
+.block-message > .btn { flex-shrink: 0; }
 .block-message .icon { color: var(--accent-text); }
 .block-message.warning { color: #f0c674; background: var(--warning-soft); }
 .block-message.warning .icon { color: var(--warning); }
@@ -185,18 +187,32 @@ details.disclosure > summary:hover { background: var(--surface-3); border-radius
 .blocks-pane { flex: 1 1 60%; min-width: 0; height: 100%; }
 .blockly-container { width: 100%; height: 100%; }
 .code-pane { flex: 1 1 100%; min-width: 0; height: 100%; display: flex; flex-direction: column; }
+.code-pane.preview-hidden { display: none; }
 .editors-split .code-pane { flex: 0 0 40%; border-left: 1px solid var(--border); }
 .pane-label { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; flex-shrink: 0; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-3); background: var(--surface-1); border-bottom: 1px solid var(--border); }
 .pane-label .pill { text-transform: none; letter-spacing: 0; }
 .monaco-host { flex: 1; min-height: 0; }
+.resize-handle { flex-shrink: 0; position: relative; background: var(--surface-1); touch-action: none; user-select: none; }
+.resize-handle::after { content: ""; position: absolute; background: var(--border-strong); }
+.resize-handle.horizontal { height: 6px; cursor: row-resize; }
+.resize-handle.horizontal::after { top: 2px; height: 1px; left: 0; right: 0; }
+.resize-handle.vertical { width: 6px; cursor: col-resize; }
+.resize-handle.vertical::after { left: 2px; width: 1px; top: 0; bottom: 0; }
+.resize-handle:hover::after, .resize-handle:focus-visible::after { background: var(--accent); }
 
 /* Output panel */
-.output { height: 236px; flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--surface-0); }
-.console-header { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 14px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
-.console-title { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase; color: var(--text-2); }
+.output { flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--surface-0); }
+.console-header { display: flex; flex-shrink: 0; min-width: 0; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 14px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
+.console-title { display: flex; min-width: 0; align-items: center; gap: 7px; font-size: 11px; font-weight: 650; letter-spacing: .5px; white-space: nowrap; text-transform: uppercase; color: var(--text-2); }
+.console-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.console-title .title-short { display: none; }
 .console-title .icon { color: var(--text-3); }
-.console-header .row { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.console-header .row { flex-shrink: 0; margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .console-header .select { width: auto; height: 26px; }
+.output-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.output-content[hidden] { display: none; }
+.output.collapsed .console-header { border-bottom: 0; }
+.output.collapsed { border-top: 0; }
 .console { flex: 1; min-height: 0; margin: 0; padding: 10px 14px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.65; color: #c4ccd8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .console .line-error { color: #ff9f9a; }
 .console .line-success { color: #7dd8a8; }
@@ -263,5 +279,11 @@ details.disclosure > summary:hover { background: var(--surface-3); border-radius
   .sidebar { width: 232px; }
   .head-title strong { display: none; }
   .statusbar .push { display: none; }
+}
+@container workspace (max-width: 700px) {
+  .console-title .title-long { display: none; }
+  .console-title .title-short { display: inline; }
+  .console-header { gap: 4px; padding-left: 8px; }
+  .console-header .row { gap: 4px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

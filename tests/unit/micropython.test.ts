@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import * as Blockly from 'blockly/core';
 import { MICRO_BOARDS, type MicroBoard } from '../../apps/desktop/src/shared/boards';
 import { registerBlocks } from '../../apps/desktop/src/shared/blocks/definitions';
-import { TEMPLATES } from '../../apps/desktop/src/shared/blocks/templates';
+import { TEMPLATES, examplePins, microTemplate } from '../../apps/desktop/src/shared/blocks/templates';
 import { generateMicroPython } from '../../apps/desktop/src/shared/blocks/python-generator';
 import { MicroPythonService, validateProbe, validateRemotePath, verifyFirmware } from '../../apps/desktop/src/main/micropython';
 import { CommandRunner, SerialSession } from '../../apps/desktop/src/main/processes';
@@ -27,6 +27,26 @@ test('MicroPython generates GPIO, condition, delay, DHT and NeoPixel workflows',
       if (template.id === 'dht11') assert.match(generated.code, /ticks_diff\(now, eduDhtTime_4\) >= 2000/);
     } finally { workspace.dispose(); }
   }
+});
+
+test('C3 wiring and generated LED/button programs use the same defaults without changing classic ESP32', () => {
+  for (const board of ['esp32', 'esp32c3', 'esp32s3', 'esp32s3-octal'] as const) {
+    const pins = examplePins('micropython', board);
+    for (const id of ['led', 'button']) {
+      const example = TEMPLATES.find(item => item.id === id)!;
+      const workspace = new Blockly.Workspace();
+      try {
+        Blockly.serialization.workspaces.load(microTemplate(example, board), workspace);
+        const code = generateMicroPython(workspace).code;
+        const notes = example.wiring(pins).join('\n');
+        assert.match(code, new RegExp('eduPin_' + pins.led + ' = Pin\\(' + pins.led + '\\)'));
+        assert.ok(notes.includes('GPIO' + pins.led));
+        if (id === 'button') { assert.ok(notes.includes('GPIO' + pins.button)); assert.ok(code.includes('eduPin_' + pins.button + '.init(Pin.IN, Pin.PULL_UP)')); }
+        if (board === 'esp32c3') { assert.doesNotMatch(notes, /GPIO2\b|GPIO18\b|经典 ESP32/); assert.doesNotMatch(code, /eduPin_(2|18)\b/); }
+      } finally { workspace.dispose(); }
+    }
+  }
+  assert.deepEqual(examplePins('arduino', 'esp32c3'), { led: 2, button: 18 }, 'Arduino retains its independently configured example baseline');
 });
 
 test('rejects remote traversal and firmware/chip/flash/security mismatches', () => {

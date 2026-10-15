@@ -41,6 +41,9 @@ jobs:
       - name: MicroPython software workflow
         if: runner.os == 'Windows'
         run: npm run test:python
+      - name: Editing state and adaptive panels
+        if: runner.os == 'Windows'
+        run: npm run test:workspace
       - name: Generated Python syntax
         run: npm run test:python-examples
       - name: Build unsigned Windows preview
@@ -60,6 +63,11 @@ jobs:
       - name: Packaged Python workflow
         if: runner.os == 'Windows'
         run: npm run test:python
+        env:
+          EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
+      - name: Packaged editing state and panels
+        if: runner.os == 'Windows'
+        run: npm run test:workspace
         env:
           EDUBOARD_SMOKE_EXE: '${{ github.workspace }}/release/win-unpacked/EduBoard IDE.exe'
       - name: Save preview installer
