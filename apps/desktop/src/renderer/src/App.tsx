@@ -1,16 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type { BoardInfo, CommandResult, PortInfo, Sketch, ToolSettings } from '../../shared/types';
-import './editor';
+import { EDITOR_THEME } from './editor';
+import { icons } from './icons';
 import ConfirmDialog, { DISCARD_TEXT, type ConfirmText } from './ConfirmDialog';
 import type { BlockEditorHandle } from './BlockEditor';
 import type { ProjectDocument, ProjectLanguage, ProjectMode, TextDrafts, WorkspaceState } from '../../shared/project-format';
 import { TEMPLATES, microTemplate } from '../../shared/blocks/templates';
-import type { MicroBoardId } from '../../shared/boards';
+import { MICRO_BOARDS, type MicroBoardId } from '../../shared/boards';
 import MicroPythonPane from './MicroPythonPane';
 
 const BlockEditor = lazy(() => import('./BlockEditor'));
+type SidebarPanel = 'project' | 'device' | 'tools';
+
+/** Colour console lines; detail lines under a failed step stay red until the next step or blank line. */
+function consoleLineClasses(lines: string[]): Array<string | undefined> {
+  let failing = false;
+  return lines.map(line => {
+    const step = /^\[[^\]]+\]/.test(line);
+    if (step || !line.trim()) failing = false;
+    if (/^\[错误\]|\] 失败|^\[[^\]]*失败\]|未找到工具|Error|error:/.test(line)) { failing = step || failing; return 'line-error'; }
+    if (failing) return 'line-error';
+    if (/\] 成功|^\[已保存\]/.test(line)) return 'line-success';
+    return step ? 'line-step' : undefined;
+  });
+}
+
+/** Strip Electron's IPC wrapper so learners see only the actual reason. */
+function errorText(error: unknown): string {
+  return String(error).replace(/^Error: /, '').replace(/^Error invoking remote method '[^']+': /, '').replace(/^Error: /, '');
+}
 
 const STARTER = [
   '// EduBoard IDE - ESP32 Blink',
@@ -81,6 +101,18 @@ export default function App(): JSX.Element {
   const busyRef = useRef(false);
   const [monitoring, setMonitoring] = useState(false);
   const [serialInput, setSerialInput] = useState('');
+  const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel | null>('project');
+  const [cliOk, setCliOk] = useState(false);
+  const [pythonOk, setPythonOk] = useState(false);
+  const consoleRef = useRef<HTMLPreElement>(null);
+  const consoleLines = useMemo(() => consoleText.split('\n'), [consoleText]);
+  const consoleClasses = useMemo(() => consoleLineClasses(consoleLines), [consoleLines]);
+
+  useEffect(() => {
+    // Follow new output unless the reader has scrolled up to inspect earlier lines.
+    const element = consoleRef.current;
+    if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 80) element.scrollTop = element.scrollHeight;
+  }, [consoleText]);
 
   useEffect(() => {
     const removeTaskOutput = window.eduboard.onTaskOutput((data) => {
@@ -137,7 +169,7 @@ export default function App(): JSX.Element {
     try {
       await task();
     } catch (error) {
-      append('[错误] ' + String(error));
+      append('[错误] ' + errorText(error));
     } finally {
       setBusy(false);
       busyRef.current = false;
@@ -148,19 +180,19 @@ export default function App(): JSX.Element {
     try {
       setTools(await window.eduboard.toolSettings());
       const version = await window.eduboard.cliVersion();
-      setCliStatus(version.ok ? version.stdout.trim() : version.stderr.trim());
+      setCliStatus(version.ok ? version.stdout.trim() : version.stderr.trim()); setCliOk(version.ok);
       if (!version.ok) { setBoards([]); return; }
       const result = await window.eduboard.boards();
       setBoards(result.boards);
       if (!result.ok) append(displayResult('识别开发板', result));
-    } catch (error) { setCliStatus(String(error)); }
+    } catch (error) { setCliStatus(String(error)); setCliOk(false); }
   }
 
   async function refreshPythonTools(): Promise<void> {
     try {
       const info = await window.eduboard.pythonInfo();
-      setPythonStatus(info.ok ? Object.entries(info.versions).map(([name, version]) => name + ' ' + version).join(' · ') : info.stderr);
-    } catch (error) { setPythonStatus(String(error)); }
+      setPythonStatus(info.ok ? Object.entries(info.versions).map(([name, version]) => name + ' ' + version).join(' · ') : info.stderr); setPythonOk(info.ok);
+    } catch (error) { setPythonStatus(String(error)); setPythonOk(false); }
   }
 
   async function selectTool(tool: 'arduinoCliPath' | 'arduinoConfigPath' | 'pythonPath'): Promise<void> {
@@ -176,7 +208,7 @@ export default function App(): JSX.Element {
       setPorts(result.ports);
       if (!result.ok) append(displayResult('识别串口', result));
     } catch (error) {
-      append('[识别串口失败] ' + String(error));
+      append('[识别串口失败] ' + errorText(error));
     }
   }
 
@@ -365,127 +397,192 @@ export default function App(): JSX.Element {
       await window.eduboard.sendMonitor(serialInput + (language === 'micropython' ? '\r' : '\n'));
       setSerialInput('');
     } catch (error) {
-      append('[串口发送失败] ' + String(error));
+      append('[串口发送失败] ' + errorText(error));
     }
   }
 
+  const activePanel = sidebarPanel === 'device' && language !== 'micropython' ? 'project' : sidebarPanel;
+  const blocksBlocked = mode === 'blocks' && (!blockReady || Boolean(blockError));
+  const fileName = filePath ? filePath.split(/[\\/]/).pop() : '';
+  const languageName = language === 'arduino' ? 'Arduino C++' : 'MicroPython';
+  const toolsOk = language === 'arduino' ? cliOk : pythonOk;
+  const togglePanel = (panel: SidebarPanel): void => setSidebarPanel(current => current === panel ? null : panel);
+  const railItems: Array<{ id: SidebarPanel; label: string; icon: JSX.Element }> = [
+    { id: 'project', label: '项目', icon: icons.project },
+    ...(language === 'micropython' ? [{ id: 'device' as const, label: '设备', icon: icons.chip }] : []),
+    { id: 'tools', label: '工具链', icon: icons.tools }
+  ];
+
   return (
     <div className="app">
-      <header className="header">
-        <div>
-          <span className="logo">◈</span>
-          <strong>EduBoard IDE</strong>
-          <span className="version">0.3 Preview</span>
+      <header className="topbar">
+        <div className="brand">
+          {icons.logo}
+          <span className="brand-name">EduBoard IDE</span>
+          <span className="brand-tag">0.3 Preview</span>
         </div>
-        <div className="toolbar">
-          <button disabled={busy} onClick={() => void withBusy(async () => {
+        <div className="divider" />
+        <div className="toolbar-group">
+          <button className="btn ghost collapse-able" aria-label="新建" title="新建项目" disabled={busy} onClick={() => void withBusy(async () => {
             if (!(await discardIfNeeded())) return;
             await window.eduboard.newSketch(language);
             resetProject(language === 'arduino' ? STARTER : PY_STARTER, 'text', null);
-          })}>新建</button>
-          <button disabled={busy} onClick={() => void withBusy(async () => {
+          })}>{icons.newFile}<span className="label-collapse">新建</span></button>
+          <button className="btn ghost collapse-able" aria-label="打开" title="打开项目或源程序" disabled={busy} onClick={() => void withBusy(async () => {
             if (!(await discardIfNeeded())) return;
             const project = await window.eduboard.openSketch();
             if (project) applySketch(project);
-          })}>打开</button>
-          <button disabled={busy} onClick={() => void withBusy(async () => { await save(); })}>保存</button>
-          {language === 'arduino' ? <>
-            <button className="primary" disabled={busy || mode === 'blocks' && (!blockReady || Boolean(blockError))} onClick={() => void compile()}>编译</button>
-            <button className="primary" disabled={busy || mode === 'blocks' && (!blockReady || Boolean(blockError))} onClick={() => void upload()}>编译并上传</button>
-          </> : <>
-            <button disabled={busy || mode === 'blocks' && (!blockReady || Boolean(blockError))} onClick={() => void checkPython()}>检查语法</button>
-            <button className="primary" disabled={busy || mode === 'blocks' && (!blockReady || Boolean(blockError))} onClick={() => void runPython()}>运行到设备</button>
-          </>}
-          {busy && <button onClick={() => void window.eduboard.cancelTask().catch(error => append(String(error)))}>取消任务</button>}
+          })}>{icons.open}<span className="label-collapse">打开</span></button>
+          <button className="btn ghost collapse-able" aria-label="保存" title="保存 (Ctrl+S)" disabled={busy} onClick={() => void withBusy(async () => { await save(); })}>{icons.save}<span className="label-collapse">保存</span></button>
         </div>
+        <div className="spacer" />
+        <div className="target">
+          <div className="target-field" title={language === 'arduino' ? 'Arduino 开发板（FQBN）' : 'MicroPython 固件 / 板型'}>
+            {icons.chip}
+            {language === 'arduino' ? <>
+              <input id="fqbn" className="input mono target-board" aria-label="Arduino FQBN" list="installed-boards" value={fqbn} disabled={busy} spellCheck={false} onChange={(e) => setFqbn(e.target.value)} />
+              <datalist id="installed-boards">
+                {boards.map((board) => <option key={board.fqbn} value={board.fqbn}>{board.name}</option>)}
+              </datalist>
+            </> : <select id="micro-board" className="select target-board" aria-label="固件 / 板型" value={microBoardId} disabled={busy} onChange={event => setMicroBoardId(event.target.value as MicroBoardId)}>
+              {MICRO_BOARDS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>}
+          </div>
+          <div className="target-field" title="串口（可从列表选择或手动输入）">
+            {icons.plug}
+            <input id="port" className="input mono target-port" aria-label="串口" value={port} list="available-ports" placeholder="COM3" spellCheck={false} disabled={busy || monitoring} onChange={(e) => setPort(e.target.value)} />
+            <datalist id="available-ports">
+              {ports.map((item) => <option key={item.address} value={item.address}>{item.label}</option>)}
+            </datalist>
+            <button className="btn ghost icon-only" aria-label="刷新串口列表" title={'刷新串口列表（已发现 ' + ports.length + ' 个）'} disabled={busy} onClick={() => void refreshPorts()}>{icons.refresh}</button>
+          </div>
+        </div>
+        <div className="actions">
+          {language === 'arduino' ? <>
+            <button className="btn lg narrow-icon" aria-label="编译" disabled={busy || blocksBlocked} title="编译并检查程序" onClick={() => void compile()}>{icons.verify}<span className="label-narrow">编译</span></button>
+            <button className="btn lg primary narrow-icon" aria-label="编译并上传" disabled={busy || blocksBlocked} title="编译后上传到开发板" onClick={() => void upload()}>{icons.upload}<span className="label-narrow">编译并上传</span></button>
+          </> : <>
+            <button className="btn lg narrow-icon" aria-label="检查语法" disabled={busy || blocksBlocked} title="仅解析语法，不在电脑上执行" onClick={() => void checkPython()}>{icons.verify}<span className="label-narrow">检查语法</span></button>
+            <button className="btn lg primary narrow-icon" aria-label="运行到设备" disabled={busy || blocksBlocked} title="保存并在开发板上运行" onClick={() => void runPython()}>{icons.run}<span className="label-narrow">运行到设备</span></button>
+          </>}
+          {busy && !confirmation && <button className="btn lg danger" onClick={() => void window.eduboard.cancelTask().catch(error => append(String(error)))}>{icons.stop}取消任务</button>}
+        </div>
+        {busy && !confirmation && <div className="progress" aria-hidden="true" />}
       </header>
 
-      <div className="workspace">
-        <aside className="sidebar">
-          <h3>当前项目</h3>
-          <div className="file">{filePath || '未保存项目'}{dirty ? ' · 有未保存更改' : ''}</div>
-          {projectPath && <p className="muted small">项目文件：{projectPath}</p>}
-          <h3>开发板示例</h3>
-          <label htmlFor="example">示例</label>
-          <select id="example" value={selectedTemplate} disabled={busy} onChange={event => setSelectedTemplate(event.target.value)}>
-            {TEMPLATES.filter(item => language === 'arduino' || item.id !== 'sh1106').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <button disabled={busy} onClick={() => void newBlocks()}>新建图形化示例</button>
-          <p className="muted small">{template.summary}</p>
-          <details><summary>接线说明</summary>
-            {template.wiring.map(line => <p className="muted small wiring-line" key={line}>{line}</p>)}
-            {template.libraries.length > 0 && <p className="muted small">依赖：{template.libraries.join('、')}</p>}
-          </details>
-          <h3>开发板配置</h3>
-          {language === 'arduino' && <>
-          <label htmlFor="fqbn">Arduino FQBN</label>
-          <input id="fqbn" list="installed-boards" value={fqbn} disabled={busy} onChange={(e) => setFqbn(e.target.value)} />
-          <datalist id="installed-boards">
-            {boards.map((board) => <option key={board.fqbn} value={board.fqbn}>{board.name}</option>)}
-          </datalist>
-          <p className="muted small">已安装目标：{boards.length} · 请选择实际板型</p>
-          </>}
-          <label htmlFor="port">串口</label>
-          <input id="port" value={port} list="available-ports" placeholder="COM3" disabled={busy || monitoring} onChange={(e) => setPort(e.target.value)} />
-          <datalist id="available-ports">
-            {ports.map((item) => <option key={item.address} value={item.address}>{item.label}</option>)}
-          </datalist>
-          <button onClick={() => void refreshPorts()} disabled={busy}>刷新串口列表</button>
-          <p className="muted small">串口数量：{ports.length}（也可以手动输入）</p>
-          {language === 'micropython' && <MicroPythonPane boardId={microBoardId} onBoard={setMicroBoardId} port={port} busy={busy} action={withBusy} save={save} append={append} result={displayResult} />}
-          <h3>工具链状态</h3>
-          <p className="muted small">{language === 'arduino' ? cliStatus : pythonStatus}</p>
-          <details>
-            <summary>工具链设置</summary>
-            <div className="tool-settings">
-              {language === 'arduino' ? <>
-              <p className="muted small">Arduino CLI：{tools?.arduinoCliPath || '检查中'}</p>
-              <button disabled={busy} onClick={() => void selectTool('arduinoCliPath')}>选择 Arduino CLI</button>
-              <p className="muted small">配置：{tools?.arduinoConfigPath || '使用 CLI 默认配置'}</p>
-              <button disabled={busy} onClick={() => void selectTool('arduinoConfigPath')}>选择 CLI 配置</button>
-              <button disabled={busy} onClick={() => void withBusy(refreshToolchain)}>刷新开发板</button>
-              <button disabled={busy} onClick={() => void withBusy(async () => {
-                append('[工具链] 联网安装官方 ESP32 核心，可能需要较长时间。');
-                append(displayResult('安装 ESP32 核心', await window.eduboard.installEsp32()));
-                await refreshToolchain();
-              })}>安装 ESP32 核心（联网）</button>
-              <button disabled={busy} onClick={() => void withBusy(async () => {
-                append('[工具链] 联网安装固定版本的示例传感器库。');
-                append(displayResult('安装示例依赖', await window.eduboard.installExampleLibraries()));
-              })}>安装示例依赖（联网）</button>
-              </> : <>
-                <p className="muted small">Python：{tools?.pythonPath || 'python'}</p>
-                <button disabled={busy} onClick={() => void selectTool('pythonPath')}>选择 Python 工具环境</button>
-                <button disabled={busy} onClick={() => void withBusy(refreshPythonTools)}>刷新 Python 工具</button>
-                <p className="muted small">按离线说明安装 mpremote、esptool、pyserial。语法检查只解析代码；设备模块须在板上验证。</p>
-              </>}
-            </div>
-          </details>
-          <h3>使用提醒</h3>
-          <p className="muted small">{language === 'arduino' ? '开发预览：上传前确认 ESP32 核心和驱动。' : '开发预览：需先安装匹配的 MicroPython 固件。C3 新示例默认 LED3、按钮5；换板后重新检查引脚。'}</p>
-        </aside>
+      <div className="body">
+        <nav className="rail" aria-label="侧边栏">
+          {railItems.map(item => <button key={item.id} className="rail-button" aria-label={item.label} title={item.label} aria-pressed={activePanel === item.id} onClick={() => togglePanel(item.id)}>{item.icon}</button>)}
+        </nav>
 
-        <section className="editor-region">
-          <nav className="mode-tabs" aria-label="开发模式">
-            <button aria-pressed={mode === 'blocks'} disabled={busy} onClick={() => void switchMode('blocks')}>图形化</button>
-            <button aria-pressed={mode === 'text' && language === 'arduino'} disabled={busy} onClick={() => void switchMode('arduino')}>C++</button>
-            <button aria-pressed={mode === 'text' && language === 'micropython'} disabled={busy} onClick={() => void switchMode('micropython')}>Python</button>
-            <span>切换保留各模式内容</span>
-          </nav>
-          <div className="section-head">
-            <strong>{mode === 'blocks' ? 'Blockly · 生成 ' + (language === 'arduino' ? 'Arduino C++' : 'MicroPython') : language === 'arduino' ? 'Arduino C++' : 'MicroPython'}</strong>
-            {mode === 'blocks' && <select aria-label="积木生成语言" className="language-select" value={blockTarget} disabled={busy || !blockReady} onChange={event => void switchBlockTarget(event.target.value as ProjectLanguage)}>
-              <option value="arduino">Arduino C++</option><option value="micropython">MicroPython</option>
-            </select>}
-            {workspaceState && <button disabled={busy || mode === 'blocks' && (!blockReady || Boolean(blockError))} onClick={() => void adoptGenerated()}>{mode === 'blocks' ? '采用生成代码' : '从积木更新代码'}</button>}
-            <span>{dirty ? '有未保存更改' : filePath ? '已保存' : '新建项目未保存'}</span>
+        {activePanel && <aside className="sidebar" aria-label={railItems.find(item => item.id === activePanel)?.label}>
+          <div className="sidebar-head">{activePanel === 'project' ? '项目' : activePanel === 'device' ? 'MicroPython 设备' : '工具链'}</div>
+          <div className="sidebar-scroll">
+            {activePanel === 'project' && <>
+              <div className="card project-card">
+                <div className="project-name">{filePath ? icons.file : icons.newFile}<span title={filePath || undefined}>{fileName || '未命名项目'}</span></div>
+                <div className="file" title={filePath || undefined}><bdi>{filePath || '未保存项目'}</bdi></div>
+                <div className="pill-row">
+                  <span className="pill accent">{languageName}</span>
+                  <span className="pill">{mode === 'blocks' ? '图形化' : '文本'}</span>
+                  {dirty && <span className="pill warning"><span className="dot" />未保存</span>}
+                </div>
+                {projectPath && <dl className="kv"><dt>项目文件</dt><dd title={projectPath}>{projectPath.split(/[\\/]/).pop()}</dd></dl>}
+              </div>
+              <section className="panel-section">
+                <div className="section-title">开发板示例</div>
+                <div className="field">
+                  <label htmlFor="example">示例</label>
+                  <select id="example" className="select" value={selectedTemplate} disabled={busy} onChange={event => setSelectedTemplate(event.target.value)}>
+                    {TEMPLATES.filter(item => language === 'arduino' || item.id !== 'sh1106').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                </div>
+                <p className="hint">{template.summary}</p>
+                <button className="btn block" disabled={busy} onClick={() => void newBlocks()}>{icons.blocks}新建图形化示例</button>
+                <details className="disclosure">
+                  <summary>接线说明</summary>
+                  <div className="disclosure-body">
+                    <ul className="wiring">{template.wiring.map(line => <li key={line}>{line}</li>)}</ul>
+                    {template.libraries.length > 0 && <p className="hint">依赖：{template.libraries.join('、')}</p>}
+                  </div>
+                </details>
+              </section>
+              <div className="note">{icons.info}<span>{language === 'arduino' ? '开发预览：上传前确认 ESP32 核心和驱动。' : '开发预览：需先安装匹配的 MicroPython 固件。C3 新示例默认 LED3、按钮5；换板后重新检查引脚。'}</span></div>
+            </>}
+            {activePanel === 'device' && <MicroPythonPane boardId={microBoardId} port={port} busy={busy} action={withBusy} save={save} append={append} result={displayResult} />}
+            {activePanel === 'tools' && <>
+              <section className="panel-section">
+                <div className="section-title">状态</div>
+                <div className={'status-line ' + (toolsOk ? 'ok' : 'bad')}><span className="dot" /><span>{language === 'arduino' ? cliStatus : pythonStatus}</span></div>
+              </section>
+              {language === 'arduino' ? <>
+                <section className="panel-section">
+                  <div className="section-title">Arduino CLI</div>
+                  <dl className="kv">
+                    <dt>程序</dt><dd>{tools?.arduinoCliPath || '检查中'}</dd>
+                    <dt>配置</dt><dd>{tools?.arduinoConfigPath || '使用 CLI 默认配置'}</dd>
+                    <dt>目标</dt><dd>已安装 {boards.length} 个开发板</dd>
+                  </dl>
+                  <div className="button-stack">
+                    <button className="btn block" disabled={busy} onClick={() => void selectTool('arduinoCliPath')}>选择 Arduino CLI</button>
+                    <button className="btn block" disabled={busy} onClick={() => void selectTool('arduinoConfigPath')}>选择 CLI 配置</button>
+                    <button className="btn block" disabled={busy} onClick={() => void withBusy(refreshToolchain)}>{icons.refresh}刷新开发板</button>
+                  </div>
+                </section>
+                <section className="panel-section">
+                  <div className="section-title">联网安装</div>
+                  <div className="button-stack">
+                    <button className="btn block" disabled={busy} onClick={() => void withBusy(async () => {
+                      append('[工具链] 联网安装官方 ESP32 核心，可能需要较长时间。');
+                      append(displayResult('安装 ESP32 核心', await window.eduboard.installEsp32()));
+                      await refreshToolchain();
+                    })}>{icons.download}安装 ESP32 核心（联网）</button>
+                    <button className="btn block" disabled={busy} onClick={() => void withBusy(async () => {
+                      append('[工具链] 联网安装固定版本的示例传感器库。');
+                      append(displayResult('安装示例依赖', await window.eduboard.installExampleLibraries()));
+                    })}>{icons.download}安装示例依赖（联网）</button>
+                  </div>
+                </section>
+              </> : <section className="panel-section">
+                <div className="section-title">Python 工具环境</div>
+                <dl className="kv"><dt>Python</dt><dd>{tools?.pythonPath || 'python'}</dd></dl>
+                <div className="button-stack">
+                  <button className="btn block" disabled={busy} onClick={() => void selectTool('pythonPath')}>选择 Python 工具环境</button>
+                  <button className="btn block" disabled={busy} onClick={() => void withBusy(refreshPythonTools)}>{icons.refresh}刷新 Python 工具</button>
+                </div>
+                <p className="hint">按离线说明安装 mpremote、esptool、pyserial。语法检查只解析代码；设备模块须在板上验证。</p>
+              </section>}
+            </>}
           </div>
-          {mode === 'blocks' && <div className={blockError ? 'block-message error' : 'block-message'} role={blockError ? 'alert' : undefined}>
-            {blockError || blockWarnings.join(' · ') || '积木单向生成代码。采用生成代码可更新文本工作区；三个模式的内容分别保留。'}
+        </aside>}
+
+        <main className="main">
+          <div className="section-head">
+            <nav className="mode-tabs" aria-label="开发模式">
+              <button aria-pressed={mode === 'blocks'} disabled={busy} title="图形化积木（切换保留各模式内容）" onClick={() => void switchMode('blocks')}>{icons.blocks}图形化</button>
+              <button aria-pressed={mode === 'text' && language === 'arduino'} disabled={busy} title="Arduino C++ 文本" onClick={() => void switchMode('arduino')}>{icons.code}C++</button>
+              <button aria-pressed={mode === 'text' && language === 'micropython'} disabled={busy} title="MicroPython 文本" onClick={() => void switchMode('micropython')}>{icons.python}Python</button>
+            </nav>
+            <div className="head-title">
+              {mode === 'blocks' ? <>
+                <strong>积木生成</strong>
+                <select aria-label="积木生成语言" className="select language-select" value={blockTarget} disabled={busy || !blockReady} onChange={event => void switchBlockTarget(event.target.value as ProjectLanguage)}>
+                  <option value="arduino">Arduino C++</option><option value="micropython">MicroPython</option>
+                </select>
+              </> : <strong>{languageName}</strong>}
+            </div>
+            <div className="head-actions">
+              {workspaceState && <button className="btn narrow-icon" aria-label={mode === 'blocks' ? '采用生成代码' : '从积木更新代码'} title={mode === 'blocks' ? '用积木生成的代码替换当前语言的文本' : '用积木重新生成当前语言的文本'} disabled={busy || blocksBlocked} onClick={() => void adoptGenerated()}>{icons.code}<span className="label-narrow">{mode === 'blocks' ? '采用生成代码' : '从积木更新代码'}</span></button>}
+              <span className={'save-state' + (dirty ? ' dirty' : filePath ? '' : ' new')}><span className="dot" />{dirty ? '有未保存更改' : filePath ? '已保存' : '新建项目未保存'}</span>
+            </div>
+          </div>
+          {mode === 'blocks' && <div className={'block-message' + (blockError ? ' error' : blockWarnings.length ? ' warning' : '')} role={blockError ? 'alert' : undefined}>
+            {blockError ? icons.warning : blockWarnings.length ? icons.warning : icons.info}
+            <span>{blockError || blockWarnings.join(' · ') || '积木单向生成代码。采用生成代码可更新文本工作区；三个模式的内容分别保留。'}</span>
           </div>}
           <div className={'editor' + (mode === 'blocks' ? ' editors-split' : '')}>
             {mode === 'blocks' && workspaceState && <div className="blocks-pane">
-              <Suspense fallback={<p>正在加载本地积木编辑器…</p>}>
+              <Suspense fallback={<p className="hint" style={{ padding: 16 }}>正在加载本地积木编辑器…</p>}>
                 <BlockEditor key={blockEpoch} ref={blockEditor} initial={workspaceState} language={language} disabled={busy} onUpdate={(snapshot, changed) => {
                   setWorkspaceState(snapshot.workspace); setSource(snapshot.code); setBlockError(snapshot.error); setBlockWarnings(snapshot.warnings); setBlockReady(true);
                   if (changed) setBlockRevision(previous => previous + 1);
@@ -493,43 +590,55 @@ export default function App(): JSX.Element {
               </Suspense>
             </div>}
             <div className="code-pane">
-            <Editor
-              key={blockEpoch + ':' + mode + ':' + language}
-              height="100%"
-              language={language === 'arduino' ? 'cpp' : 'python'}
-              theme="vs-dark"
-              value={source}
-              onChange={(value) => { if (mode === 'text') { const code = value ?? ''; setSource(code); setTextDrafts(previous => ({ ...previous, [language]: code })); } }}
-              loading={<p className="muted">正在加载本地编辑器…</p>}
-              options={{ minimap: { enabled: false }, fontSize: 15, automaticLayout: true, tabSize: 2, readOnly: busy || mode === 'blocks', accessibilitySupport: 'on', editContext: false, ariaLabel: mode === 'blocks' ? '生成代码预览' : language === 'arduino' ? 'Arduino C++ 代码编辑器' : 'MicroPython 代码编辑器', scrollBeyondLastLine: false }}
-            />
+              {mode === 'blocks' && <div className="pane-label">{icons.code}生成代码<span className="pill">只读</span></div>}
+              <div className="monaco-host">
+                <Editor
+                  key={blockEpoch + ':' + mode + ':' + language}
+                  height="100%"
+                  language={language === 'arduino' ? 'cpp' : 'python'}
+                  theme={EDITOR_THEME}
+                  value={source}
+                  onChange={(value) => { if (mode === 'text') { const code = value ?? ''; setSource(code); setTextDrafts(previous => ({ ...previous, [language]: code })); } }}
+                  loading={<p className="hint">正在加载本地编辑器…</p>}
+                  options={{ minimap: { enabled: false }, fontSize: 14, lineHeight: 22, fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace', fontLigatures: false,
+                    padding: { top: 12, bottom: 12 }, automaticLayout: true, tabSize: 2, readOnly: busy || mode === 'blocks', accessibilitySupport: 'on', editContext: false,
+                    renderLineHighlight: 'all', smoothScrolling: true, cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on', roundedSelection: true, guides: { indentation: true },
+                    scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false }, overviewRulerBorder: false, overviewRulerLanes: 0, hideCursorInOverviewRuler: true, lineNumbersMinChars: 3,
+                    ariaLabel: mode === 'blocks' ? '生成代码预览' : language === 'arduino' ? 'Arduino C++ 代码编辑器' : 'MicroPython 代码编辑器', scrollBeyondLastLine: false }}
+                />
+              </div>
             </div>
           </div>
-          <div className="console-header">
-            <strong>{language === 'arduino' ? '输出 / 串口监视器' : '输出 / MicroPython REPL'}</strong>
-            <div className="row">
-              <select aria-label="串口波特率" value={baud} disabled={busy || monitoring} onChange={(e) => setBaud(Number(e.target.value))}>
-                <option value={9600}>9600</option>
-                <option value={115200}>115200</option>
-                <option value={230400}>230400</option>
-              </select>
-              <button disabled={busy} onClick={() => void toggleMonitor()}>{monitoring ? '关闭串口' : language === 'arduino' ? '打开串口' : '连接 REPL'}</button>
-              {language === 'micropython' && <button disabled={busy || !monitoring} onClick={() => void withBusy(async () => { await window.eduboard.interruptPython(); append('[REPL] 已发送中断，请查看设备响应。'); })}>中断设备程序</button>}
-              <button onClick={() => setConsoleText('')}>清空</button>
+          <section className="output" aria-label="输出">
+            <div className="console-header">
+              <span className="console-title">{icons.terminal}{language === 'arduino' ? '输出 / 串口监视器' : '输出 / MicroPython REPL'}</span>
+              <div className="row">
+                <select aria-label="串口波特率" className="select" value={baud} disabled={busy || monitoring} onChange={(e) => setBaud(Number(e.target.value))}>
+                  <option value={9600}>9600 baud</option>
+                  <option value={115200}>115200 baud</option>
+                  <option value={230400}>230400 baud</option>
+                </select>
+                <button className={'btn' + (monitoring ? '' : ' primary')} disabled={busy} onClick={() => void toggleMonitor()}>{monitoring ? icons.unplug : icons.plug}{monitoring ? '关闭串口' : language === 'arduino' ? '打开串口' : '连接 REPL'}</button>
+                {language === 'micropython' && <button className="btn" disabled={busy || !monitoring} onClick={() => void withBusy(async () => { await window.eduboard.interruptPython(); append('[REPL] 已发送中断，请查看设备响应。'); })}>{icons.interrupt}中断设备程序</button>}
+                <button className="btn ghost" title="清空输出" onClick={() => setConsoleText('')}>{icons.clear}清空</button>
+              </div>
             </div>
-          </div>
-          <pre className="console">{consoleText || '暂无输出'}</pre>
-          <div className="serial-input">
-            <input aria-label="串口发送文本" placeholder="向串口发送文本..." value={serialInput} disabled={!monitoring || busy} onKeyDown={(e) => {
-              if (e.key === 'Enter') void sendSerial();
-            }} onChange={(e) => setSerialInput(e.target.value)} />
-            <button disabled={!monitoring || busy} onClick={() => void sendSerial()}>发送</button>
-          </div>
-        </section>
+            <pre className="console" ref={consoleRef}>{consoleText ? consoleLines.map((line, index) => <span key={index} className={consoleClasses[index]}>{line}{index < consoleLines.length - 1 ? '\n' : ''}</span>) : <span className="console-empty">暂无输出</span>}</pre>
+            <div className="serial-input">
+              <input className="input" aria-label="串口发送文本" placeholder={monitoring ? '向串口发送文本，按 Enter 发送' : '连接串口后可发送文本'} value={serialInput} disabled={!monitoring || busy} onKeyDown={(e) => {
+                if (e.key === 'Enter') void sendSerial();
+              }} onChange={(e) => setSerialInput(e.target.value)} />
+              <button className="btn" disabled={!monitoring || busy} onClick={() => void sendSerial()}>{icons.send}发送</button>
+            </div>
+          </section>
+        </main>
       </div>
-      <footer className="footer">
-        <span>EduBoard IDE · GPL-3.0 · Independent open-source project</span>
-        <span role="status">{busy ? '任务执行中…' : monitoring ? '串口监视运行中' : '准备就绪（未验证硬件连接）'}</span>
+      <footer className={'statusbar' + (busy && !confirmation ? ' busy' : monitoring ? ' live' : '')}>
+        <span className="status-item" role="status">{confirmation ? '等待确认…' : busy ? <><span className="spinner" />任务执行中…</> : monitoring ? <><span className="dot" />串口监视运行中</> : '准备就绪（未验证硬件连接）'}</span>
+        <span className="status-item">{languageName}</span>
+        <span className="status-item">{language === 'arduino' ? fqbn : MICRO_BOARDS.find(item => item.id === microBoardId)?.name}</span>
+        <span className="status-item">{port.trim() || '未选择串口'} · {baud}</span>
+        <span className="status-item muted push">EduBoard IDE · GPL-3.0 · Independent open-source project</span>
       </footer>
       {confirmation && <ConfirmDialog message={confirmation.message} text={confirmation.text} onAnswer={(answer) => {
         confirmation.resolve(answer);

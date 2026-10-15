@@ -269,7 +269,7 @@ function registerHandlers(): void {
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280, height: 820, minWidth: 860, minHeight: 600, title: 'EduBoard IDE',
-    backgroundColor: '#131923', autoHideMenuBar: true,
+    backgroundColor: '#0f1318', autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

@@ -29,11 +29,15 @@ const BlockEditor = forwardRef<BlockEditorHandle, Props>(function BlockEditor({ 
     registerBlocks();
     if (!container.current) return;
     const current = Blockly.inject(container.current, {
-      theme: Blockly.Theme.defineTheme('eduboard', { name: 'eduboard', base: Blockly.Themes.Classic,
-        componentStyles: { workspaceBackgroundColour: '#f9fbff', toolboxBackgroundColour: '#e5ebf3', toolboxForegroundColour: '#18263a', flyoutBackgroundColour: '#dde6f2', flyoutForegroundColour: '#18263a', flyoutOpacity: 1, scrollbarColour: '#91a4bf' } }),
-      toolbox: TOOLBOX, media: './', sounds: false, trashcan: true,
-      scrollbars: true, zoom: { controls: true, wheel: true, startScale: 0.85, maxScale: 1.5, minScale: 0.2 },
-      grid: { spacing: 20, length: 2, colour: '#bcc7d5', snap: true }
+      // Colours mirror the CSS design tokens in styles.css.
+      theme: Blockly.Theme.defineTheme('eduboard-dark', { name: 'eduboard-dark', base: Blockly.Themes.Classic,
+        componentStyles: { workspaceBackgroundColour: '#0f1318', toolboxBackgroundColour: '#151a21', toolboxForegroundColour: '#c9d1dd', flyoutBackgroundColour: '#1a2029',
+          flyoutForegroundColour: '#c9d1dd', flyoutOpacity: 0.97, scrollbarColour: '#3a4352', scrollbarOpacity: 0.8, insertionMarkerColour: '#ffffff', insertionMarkerOpacity: 0.3,
+          markerColour: '#8fb3ff', cursorColour: '#8fb3ff', selectedGlowColour: '#8fb3ff' },
+        fontStyle: { family: '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif', weight: '500', size: 11 } }),
+      toolbox: TOOLBOX, media: './', sounds: false, trashcan: true, renderer: 'zelos',
+      scrollbars: true, zoom: { controls: true, wheel: true, startScale: 0.8, maxScale: 1.5, minScale: 0.3 },
+      grid: { spacing: 24, length: 2, colour: '#232a35', snap: true }
     });
     workspace.current = current;
     Blockly.Events.disable();

@@ -48,6 +48,7 @@ try {
   assert.equal(blocks.mode, 'blocks'); assert.equal(blocks.microBoard, 'esp32c3'); assert.match(blocks.source, /eduPin_3/);
   await page.getByRole('button', { name: '运行到设备', exact: true }).click();
   await page.locator('.console').filter({ hasText: '请先选择实际开发板的串口' }).waitFor();
+  await page.getByRole('button', { name: '设备', exact: true }).click();
   await page.getByText('固件安装（会清空设备）', { exact: true }).click();
   const invalid = join(root, 'invalid.bin'); await writeFile(invalid, Buffer.alloc(64));
   await application.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }); }, invalid);
