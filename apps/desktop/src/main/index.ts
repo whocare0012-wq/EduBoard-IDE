@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { lstat, readFile } from 'node:fs/promises';
 import { basename, dirname, join, posix } from 'node:path';
 import type { BoardsResult, CommandResult, FirmwareInfo, PortsResult, Sketch, ToolSettings } from '../shared/types';
-import { atomicWrite, defaultProjectName, generationFailed, normalizeProjectPath, normalizeSketchPath, projectPathForSource, projectSourcePath, savedSourceFor, readProject, readPythonScript, readSketch, validateSource, writeProject, writeSketch } from './projects';
+import { atomicWrite, defaultProjectName, exportNeedsConfirmation, generationFailed, normalizeProjectPath, normalizeSketchPath, projectPathForSource, projectSourcePath, readProject, readPythonScript, readSketch, validateSource, writeProject, writeSketch } from './projects';
 import { SENSOR_LIBRARIES, validateProject, type ProjectLanguage } from '../shared/project-format';
 import { microBoard } from '../shared/boards';
 import { MicroPythonService, validateRemotePath } from './micropython';
@@ -113,11 +113,13 @@ async function saveProject(value: unknown): Promise<Sketch | null> {
   const targetSource = projectSourcePath(targetPath, document.language);
   // An existing export is ours only if it still holds what this project last saved for that language.
   const foreignSource = async (): Promise<boolean> => {
-    if (targetSource === currentSketchPath || generationFailed(document) || !(await exists(targetSource))) return false;
+    if (generationFailed(document) || !(await exists(targetSource))) return false;
+    // Converting the opened standalone source into a project: that file is the one being edited.
+    if (!currentProjectPath && targetSource === currentSketchPath) return false;
     if (targetPath !== currentProjectPath) return true;
+    // Within a project, the export may have been edited outside the IDE since the last save.
     const saved = await readProject(targetPath).then(project => project.document!, () => null);
-    const previous = saved && savedSourceFor(saved, document.language);
-    return previous === null || await readFile(targetSource, 'utf8').then(text => text !== previous, () => true);
+    return readFile(targetSource, 'utf8').then(text => exportNeedsConfirmation(text, saved, document.language), () => true);
   };
   if (targetPath !== currentProjectPath && await exists(targetPath) || await foreignSource()) {
     const choice = await dialog.showMessageBox({ type: 'warning', title: '覆盖已有项目？', message: targetPath, detail: '是否覆盖已有项目数据及程序？\n' + targetSource, buttons: ['取消', '覆盖'], defaultId: 0, cancelId: 0 });

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { defaultProjectName, normalizeProjectPath, normalizeSketchPath, projectPathForSource, readProject, readSketch, savedSourceFor, validateSketchName, validateSource, writeProject, writeSketch } from '../../apps/desktop/src/main/projects';
+import { defaultProjectName, exportNeedsConfirmation, normalizeProjectPath, normalizeSketchPath, projectPathForSource, readProject, readSketch, savedSourceFor, validateSketchName, validateSource, writeProject, writeSketch } from '../../apps/desktop/src/main/projects';
 import { TEMPLATES } from '../../apps/desktop/src/shared/blocks/templates';
 
 test('save creates a valid sketch and reopening preserves Unicode source', async () => {
@@ -79,4 +79,15 @@ test('export ownership and standalone source conversion pick explicit, safe path
   assert.equal(projectPathForSource(join(tmpdir(), 'scripts', 'foo.py')), null);
   assert.equal(defaultProjectName(join(tmpdir(), 'foo.py'), 'PythonProject'), 'foo');
   for (const name of ['测试.py', '1st.py', 'my script.py']) assert.equal(defaultProjectName(join(tmpdir(), name), 'PythonProject'), 'PythonProject');
+});
+
+test('saving an open project asks before replacing an externally edited export', () => {
+  const base = { format: 'eduboard-project', version: 1, fqbn: 'esp32:esp32:esp32', workspace: null } as const;
+  const saved = { ...base, language: 'arduino', mode: 'text', source: 'cpp', drafts: { arduino: 'cpp', micropython: null } } as const;
+  assert.equal(exportNeedsConfirmation('cpp', saved, 'arduino'), false);
+  assert.equal(exportNeedsConfirmation('cpp // edited outside the IDE', saved, 'arduino'), true);
+  assert.equal(exportNeedsConfirmation('print(1)', saved, 'micropython'), true);
+  assert.equal(exportNeedsConfirmation('cpp', null, 'arduino'), true);
+  const failed = { ...base, language: 'arduino', mode: 'blocks', source: '', workspace: TEMPLATES[0].createWorkspace() } as const;
+  assert.equal(exportNeedsConfirmation('// last good export', failed, 'arduino'), false);
 });

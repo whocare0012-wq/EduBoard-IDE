@@ -95,6 +95,14 @@ export function savedSourceFor(document: ProjectDocument, language: ProjectDocum
   return document.drafts?.[language] ?? null;
 }
 
+/** Whether replacing an existing export file needs confirmation: true unless it still holds what this project last wrote. */
+export function exportNeedsConfirmation(existing: string, saved: ProjectDocument | null, language: ProjectDocument['language']): boolean {
+  // A failed-generation save keeps the previous export on disk, so the file is still ours.
+  if (saved && saved.language === language && generationFailed(saved)) return false;
+  const previous = saved && savedSourceFor(saved, language);
+  return previous === null || existing !== previous;
+}
+
 /** An Arduino sketch already sits in its same-named folder, so its project can live beside it. */
 export function projectPathForSource(sourcePath: string): string | null {
   if (extname(sourcePath).toLowerCase() !== '.ino') return null;
