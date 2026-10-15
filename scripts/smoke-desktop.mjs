@@ -20,6 +20,7 @@ const application = await electron.launch({
 });
 try {
   const page = await application.firstWindow();
+  await page.setViewportSize({ width: 1280, height: 820 });
   const errors = [];
   const remoteRequests = [];
   page.on('pageerror', error => errors.push(error.message));

@@ -13,6 +13,7 @@ const environment = Object.fromEntries(Object.entries(process.env).filter(([key,
 const application = await electron.launch({ executablePath: process.env.EDUBOARD_SMOKE_EXE || require('electron'), args: process.env.EDUBOARD_SMOKE_EXE ? [] : ['.'], cwd: process.cwd(), env: { ...environment, EDUBOARD_USER_DATA: join(root, 'profile'), EDUBOARD_PYTHON_PATH: process.env.EDUBOARD_PYTHON_PATH || 'python', ARDUINO_CLI_PATH: join(root, 'missing-cli.exe') } });
 try {
   const page = await application.firstWindow(); const errors = [];
+  await page.setViewportSize({ width: 1280, height: 820 });
   page.on('pageerror', error => errors.push(error.message));
   await page.context().setOffline(true);
   await page.locator('.monaco-editor').waitFor();

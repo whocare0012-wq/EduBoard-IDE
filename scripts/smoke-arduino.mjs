@@ -17,6 +17,7 @@ const environment = Object.fromEntries(Object.entries(process.env).filter(([key,
 const application = await electron.launch({ executablePath: require('electron'), args: ['.'], cwd: process.cwd(), env: { ...environment, EDUBOARD_USER_DATA: join(temp, 'profile') }, timeout: 60_000 });
 try {
   const page = await application.firstWindow();
+  await page.setViewportSize({ width: 1280, height: 820 });
   await page.context().setOffline(true);
   await page.locator('.monaco-editor').waitFor();
   const boards = await page.evaluate(() => window.eduboard.boards());

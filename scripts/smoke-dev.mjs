@@ -33,6 +33,7 @@ try {
   }
   browser = await chromium.connectOverCDP(endpoint);
   const page = browser.contexts()[0].pages()[0];
+  await page.setViewportSize({ width: 1280, height: 820 });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.locator('.monaco-editor').waitFor({ timeout: 90_000 });

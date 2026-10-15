@@ -12,6 +12,7 @@ const environment = Object.fromEntries(Object.entries(process.env).filter(([key,
 const application = await electron.launch({ executablePath: process.env.EDUBOARD_SMOKE_EXE || require('electron'), args: process.env.EDUBOARD_SMOKE_EXE ? [] : ['.'], cwd: process.cwd(), env: { ...environment, EDUBOARD_USER_DATA: join(temp, 'profile'), ARDUINO_CLI_PATH: join(temp, 'missing-cli.exe') } });
 try {
   const page = await application.firstWindow();
+  await page.setViewportSize({ width: 1280, height: 820 });
   const errors = []; const remote = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (/^https?:/.test(request.url())) remote.push(request.url()); });

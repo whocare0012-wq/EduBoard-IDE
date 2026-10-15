@@ -53,6 +53,8 @@ See [MicroPython setup](micropython.md). `scripts/setup-python-tools.ps1` instal
 
 `npm run test:workspace` uses real offline Electron input to check independent cursor/selection/scroll, undo/redo, undoable code adoption, new/open session isolation, C3 wiring, 860×600 layout, panel collapse, pointer/keyboard resizing and automatic preview restoration. It is part of `npm run check` and both source/packaged Windows CI. All test projects and dialogs are isolated from normal application preferences and user files.
 
+Desktop smoke checks set the renderer viewport explicitly to 1280×820; the workspace check also switches it to 860×600. Hosted Windows runners can have a smaller screen than the requested native window, so a native window-size request alone does not establish a wide-layout test. The dedicated narrow case verifies automatic preview hiding separately.
+
 ## Troubleshooting
 - `ENOENT` or CLI not found: install Arduino CLI or set ARDUINO_CLI_PATH.
 - Unknown FQBN or missing platform: install the appropriate board core.

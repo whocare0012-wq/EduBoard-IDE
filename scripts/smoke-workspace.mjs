@@ -20,6 +20,7 @@ await writeFile(join(folder, 'History.ino'), cpp);
 const application = await electron.launch({ executablePath: process.env.EDUBOARD_SMOKE_EXE || require('electron'), args: process.env.EDUBOARD_SMOKE_EXE ? [] : ['.'], cwd: process.cwd(), env: { ...env, EDUBOARD_USER_DATA: join(root, 'profile'), ARDUINO_CLI_PATH: join(root, 'missing-cli.exe') } });
 try {
   const page = await application.firstWindow(); const errors = []; const remote = [];
+  await page.setViewportSize({ width: 1280, height: 820 });
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (/^https?:/.test(request.url())) remote.push(request.url()); });
   await page.context().setOffline(true);
@@ -114,6 +115,7 @@ try {
   assert.match(JSON.parse(await readFile(join(root, 'C3Button', 'C3Button.eduboard.json'), 'utf8')).source, /eduPin_5.init\(Pin.IN, Pin.PULL_UP\)/);
 
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(860, 600));
+  await page.setViewportSize({ width: 860, height: 600 });
   await page.getByRole('button', { name: '显示代码预览', exact: true }).waitFor();
   assert.equal(await page.locator('.code-pane').isVisible(), false, 'Narrow workspaces hide preview automatically');
   const narrowEditor = await page.locator('.editor').boundingBox(); const narrowOutput = await page.locator('.output').boundingBox();
@@ -149,6 +151,7 @@ try {
   await divider.dblclick(); await page.getByRole('button', { name: '显示代码预览', exact: true }).waitFor();
   assert.equal(await page.getByText('有未保存更改', { exact: true }).count(), 0, 'Layout changes do not modify the project');
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820));
+  await page.setViewportSize({ width: 1280, height: 820 });
   await page.getByRole('button', { name: '隐藏代码预览', exact: true }).waitFor();
   await page.screenshot({ path: resolve('output/playwright/workspace-wide.png') });
   assert.deepEqual(errors, []); assert.deepEqual(remote, []);
