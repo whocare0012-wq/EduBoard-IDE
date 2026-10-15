@@ -7,6 +7,19 @@ export interface CommandResult {
   stderr: string;
   cancelled?: boolean;
   streamed?: boolean;
+  /** Extra details that were not part of streamed stdout/stderr (cancel, timeout, reconnect). */
+  summary?: string;
+  diagnostics?: SourceDiagnostic[];
+}
+
+/** Locations refer only to the primary source file used by this check. Columns are one-based. */
+export interface SourceDiagnostic {
+  file: string;
+  line: number;
+  column: number;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  logLine: string;
 }
 
 export interface Sketch {

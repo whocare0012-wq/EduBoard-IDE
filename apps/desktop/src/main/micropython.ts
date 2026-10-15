@@ -6,6 +6,7 @@ import { microBoard, type MicroBoard } from '../shared/boards';
 import type { ActionResult, CommandResult, DeviceFilesResult, FirmwareInfo, PythonToolsResult } from '../shared/types';
 import { validateBaud, validatePort } from './arduino';
 import { CommandRunner, SerialSession } from './processes';
+import { parseDiagnostics } from './diagnostics';
 
 export function validateRemotePath(value: unknown): string {
   if (typeof value !== 'string' || value.length > 120 || !/^\/[A-Za-z0-9_./-]+$/.test(value) || value.split('/').includes('..') || posix.normalize(value) !== value || value === '/') {
@@ -66,7 +67,10 @@ export class MicroPythonService {
     } catch { return { ...result, ok: false, ports: [] }; }
   }
 
-  check(path: string): Promise<CommandResult> { return this.run([this.helper, 'check', path], true, 30_000); }
+  async check(path: string): Promise<CommandResult> {
+    const result = await this.run([this.helper, 'check', path], true, 30_000);
+    return { ...result, diagnostics: parseDiagnostics(result.stdout + '\n' + result.stderr, path) };
+  }
 
   async startRepl(address: unknown, baud: unknown): Promise<ActionResult> {
     const port = validatePort(address); const speed = validateBaud(baud); const config = this.python();
@@ -86,7 +90,8 @@ export class MicroPythonService {
     const result = await this.run(['-m', 'mpremote', 'connect', port, 'run', '--no-follow', path], true);
     if (!result.ok) return result;
     const repl = await this.startRepl(port, speed);
-    return repl.ok ? result : { ...result, ok: false, stderr: '脚本可能已经启动，但 REPL 未能重连：' + repl.message };
+    const message = '脚本可能已经启动，但 REPL 未能重连：' + repl.message;
+    return repl.ok ? result : { ...result, ok: false, stderr: [result.stderr, message].filter(Boolean).join('\n'), summary: message };
   }
 
   async upload(path: string, address: unknown, destination: unknown): Promise<CommandResult> {

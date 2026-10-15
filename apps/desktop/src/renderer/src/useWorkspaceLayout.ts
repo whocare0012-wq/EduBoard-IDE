@@ -26,6 +26,7 @@ export default function useWorkspaceLayout() {
     region, outputOpen, setOutputOpen, outputHeight, maxOutput: Math.min(480, maxOutput),
     resizeOutput: setPreferredHeight, resetOutput: () => setPreferredHeight(null),
     previewVisible: previewPreference ?? size.width >= 760,
+    showPreview: () => setPreviewPreference(true),
     togglePreview: () => setPreviewPreference(previous => !(previous ?? size.width >= 760)),
     previewPercent, minPreview, maxPreview, resizePreview: setPreferredPercent,
     resetPreview: () => { setPreferredPercent(40); setPreviewPreference(null); },

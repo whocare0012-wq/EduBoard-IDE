@@ -4,6 +4,14 @@ import Editor from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { monaco, EDITOR_THEME } from './editor';
 import type { ProjectLanguage } from '../../shared/project-format';
+import type { SourceDiagnostic } from '../../shared/types';
+
+export interface EditorDiagnostics {
+  session: number; language: ProjectLanguage; preview: boolean; source: string; diagnostics: SourceDiagnostic[];
+}
+export interface EditorLocation {
+  id: number; session: number; language: ProjectLanguage; preview: boolean; source: string; line: number; column: number;
+}
 
 interface Props {
   session: number;
@@ -11,6 +19,8 @@ interface Props {
   preview: boolean;
   value: string;
   disabled: boolean;
+  reports: EditorDiagnostics[];
+  location: EditorLocation | null;
   onChange: (value: string, language: ProjectLanguage) => void;
 }
 interface BufferState {
@@ -26,13 +36,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(props
   const buffers = useRef(new Map<string, BufferState>());
   const active = useRef('');
   const changing = useRef(false);
+  const revealed = useRef<EditorLocation | null>(null);
   useImperativeHandle(ref, () => ({ drafts: () => Object.fromEntries([...buffers.current.values()]
     .filter(buffer => !buffer.preview && buffer.session === latest.current.session)
     .map(buffer => [buffer.language, buffer.model.getValue()])) }));
   const options = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     minimap: { enabled: false }, fontSize: 14, lineHeight: 22, fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace', fontLigatures: false,
     padding: { top: 12, bottom: 12 }, automaticLayout: true, tabSize: 2, readOnly: props.disabled || props.preview, accessibilitySupport: 'on', editContext: false,
-    renderLineHighlight: 'all', smoothScrolling: true, cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on', roundedSelection: true, guides: { indentation: true },
+    renderLineHighlight: 'all', renderValidationDecorations: 'on', smoothScrolling: true, cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on', roundedSelection: true, guides: { indentation: true },
     scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false }, overviewRulerBorder: false, overviewRulerLanes: 0, hideCursorInOverviewRuler: true, lineNumbersMinChars: 3,
     ariaLabel: props.preview ? '生成代码预览' : props.language === 'arduino' ? 'Arduino C++ 代码编辑器' : 'MicroPython 代码编辑器', scrollBeyondLastLine: false
   }), [props.disabled, props.preview, props.language]);
@@ -52,7 +63,10 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(props
       const owned = buffer;
       if (!owned.preview) owned.subscription = owned.model.onDidChangeContent(() => {
         // An asynchronous undo may finish after its language has been hidden or input disabled.
-        if (!changing.current && owned.session === latest.current.session) latest.current.onChange(owned.model.getValue(), owned.language);
+        if (!changing.current && owned.session === latest.current.session) {
+          monaco.editor.setModelMarkers(owned.model, 'eduboard-check', []);
+          latest.current.onChange(owned.model.getValue(), owned.language);
+        }
       });
       buffers.current.set(key, buffer);
     }
@@ -78,9 +92,48 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(props
         if (previous.session !== next.session) { previous.subscription?.dispose(); previous.model.dispose(); buffers.current.delete(id); }
       }
     } finally { changing.current = false; }
+    syncMarkers();
+    reveal();
+  }
+
+  function syncMarkers(): void {
+    for (const buffer of buffers.current.values()) {
+      const source = buffer.model.getValue();
+      const report = latest.current.reports.find(item => item.session === buffer.session && item.language === buffer.language
+        && item.preview === buffer.preview && item.source === source);
+      const markers: editor.IMarkerData[] = (report?.diagnostics || []).filter(item => item.line <= buffer.model.getLineCount()).map(item => {
+        const column = Math.min(item.column, buffer.model.getLineMaxColumn(item.line));
+        const word = buffer.model.getWordAtPosition({ lineNumber: item.line, column });
+        return { startLineNumber: item.line, endLineNumber: item.line, startColumn: column,
+          endColumn: Math.max(column + 1, word?.endColumn || column + 1), message: item.message,
+          severity: item.severity === 'error' ? monaco.MarkerSeverity.Error : item.severity === 'warning' ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Info,
+          source: buffer.language === 'arduino' ? 'Arduino C++' : 'Python syntax' };
+      });
+      monaco.editor.setModelMarkers(buffer.model, 'eduboard-check', markers);
+    }
+  }
+
+  function reveal(): void {
+    const { location, session, language, preview, value } = latest.current;
+    if (!location) { revealed.current = null; return; }
+    const current = instance.current;
+    if (!current || revealed.current === location || location.session !== session || location.language !== language
+      || location.preview !== preview || location.source !== value) return;
+    revealed.current = location;
+    // The preview may have just been expanded; let its new container size reach Monaco first.
+    requestAnimationFrame(() => {
+      if (instance.current !== current || latest.current.location !== location) return;
+      const model = current.getModel();
+      if (!model || model.getValue() !== location.source) return;
+      const position = model.validatePosition({ lineNumber: location.line, column: location.column });
+      current.layout(); current.setPosition(position);
+      current.revealPositionInCenter(position, monaco.editor.ScrollType.Immediate); current.focus();
+    });
   }
 
   useLayoutEffect(sync, [props.session, props.language, props.preview, props.value]);
+  useLayoutEffect(syncMarkers, [props.reports]);
+  useLayoutEffect(reveal, [props.location]);
   useLayoutEffect(() => {
     const next = latest.current;
     instance.current?.updateOptions({ readOnly: next.disabled || next.preview,

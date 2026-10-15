@@ -33,3 +33,5 @@ Each file is saved by atomic rename. The active source export is written first, 
 Documents contain no host executable paths. Tool selections are local application preferences.
 
 Editor cursor/selection/scroll state and undo/redo remain in memory for the current project session. They survive mode switches but reset on new/open and are not serialized. Panel sizes and visibility are also application-session preferences. These UI changes do not alter format v1.
+
+Syntax/compiler reports, inline markers and log navigation also remain in memory. They are bound to the checked source snapshot and are not saved in project JSON or source exports.

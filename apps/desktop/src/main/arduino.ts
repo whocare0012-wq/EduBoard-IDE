@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import type { BoardInfo, CommandResult, PortInfo } from '../shared/types';
 import { CommandRunner, SerialSession } from './processes';
 import { FQBN_PATTERN } from '../shared/project-format';
+import { parseDiagnostics } from './diagnostics';
 
 export const ESP32_INDEX_URL = 'https://espressif.github.io/arduino-esp32/package_esp32_index.json';
 export const ESP32_CORE = 'esp32:esp32@3.3.12';
@@ -76,7 +77,7 @@ export class ArduinoService {
     const buildPath = join(this.buildRoot, createHash('sha256').update(path + '\0' + fqbn).digest('hex').slice(0, 24));
     const result = await this.run(['compile', '--fqbn', fqbn, '--build-path', buildPath, dirname(path)], true);
     if (result.ok) this.compiled = { path, fqbn, hash, buildPath };
-    return result;
+    return { ...result, diagnostics: parseDiagnostics(result.stdout + '\n' + result.stderr, path) };
   }
 
   async upload(path: string, board: unknown, address: unknown): Promise<CommandResult> {

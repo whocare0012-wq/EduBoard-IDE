@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { BoardInfo, CommandResult, PortInfo, Sketch, ToolSettings } from '../../shared/types';
-import CodeEditor, { type CodeEditorHandle } from './CodeEditor';
+import type { BoardInfo, CommandResult, PortInfo, Sketch, SourceDiagnostic, ToolSettings } from '../../shared/types';
+import { appendOutput, displayResult, outputLines, type OutputChunk } from '../../shared/console-output';
+import CodeEditor, { type CodeEditorHandle, type EditorDiagnostics, type EditorLocation } from './CodeEditor';
 import ResizeHandle from './ResizeHandle';
 import useWorkspaceLayout from './useWorkspaceLayout';
 import { icons } from './icons';
@@ -14,6 +15,7 @@ import MicroPythonPane from './MicroPythonPane';
 
 const BlockEditor = lazy(() => import('./BlockEditor'));
 type SidebarPanel = 'project' | 'device' | 'tools';
+interface DiagnosticRun extends EditorDiagnostics { id: number; }
 
 /** Colour console lines; detail lines under a failed step stay red until the next step or blank line. */
 function consoleLineClasses(lines: string[]): Array<string | undefined> {
@@ -59,18 +61,14 @@ const pythonStarter = (board: MicroBoardId): string => {
   return PY_STARTER.replace('GPIO2', 'GPIO' + pin).replace('Pin(2,', 'Pin(' + pin + ',');
 };
 
-function displayResult(action: string, result: CommandResult): string {
-  return [
-    '[' + action + '] ' + (result.ok ? '成功' : '失败'),
-    result.streamed ? '' : result.stdout.trim(),
-    result.streamed && result.ok ? '' : result.stderr.trim()
-  ].filter(Boolean).join('\n') + '\n';
-}
-
 export default function App(): JSX.Element {
   const layout = useWorkspaceLayout();
   const [editorSession, setEditorSession] = useState(0);
   const codeEditor = useRef<CodeEditorHandle>(null);
+  const [diagnosticRuns, setDiagnosticRuns] = useState<DiagnosticRun[]>([]);
+  const [location, setLocation] = useState<EditorLocation | null>(null);
+  const nextRunId = useRef(0);
+  const taskOutputRun = useRef<number | undefined>(undefined);
   const [source, setSource] = useState(STARTER);
   const [language, setLanguage] = useState<ProjectLanguage>('arduino');
   const [microBoardId, setMicroBoardId] = useState<MicroBoardId>('esp32');
@@ -104,7 +102,7 @@ export default function App(): JSX.Element {
   const [tools, setTools] = useState<ToolSettings | null>(null);
   const [baud, setBaud] = useState(115200);
   const [cliStatus, setCliStatus] = useState('检查 Arduino CLI 中...');
-  const [consoleText, setConsoleText] = useState('欢迎使用 EduBoard IDE。请先安装 Arduino CLI 和 ESP32 核心。\n');
+  const [consoleChunks, setConsoleChunks] = useState<OutputChunk[]>([{ text: '欢迎使用 EduBoard IDE。请先安装 Arduino CLI 和 ESP32 核心。\n' }]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [monitoring, setMonitoring] = useState(false);
@@ -113,21 +111,24 @@ export default function App(): JSX.Element {
   const [cliOk, setCliOk] = useState(false);
   const [pythonOk, setPythonOk] = useState(false);
   const consoleRef = useRef<HTMLPreElement>(null);
-  const consoleLines = useMemo(() => consoleText.split('\n'), [consoleText]);
-  const consoleClasses = useMemo(() => consoleLineClasses(consoleLines), [consoleLines]);
+  const consoleLines = useMemo(() => outputLines(consoleChunks), [consoleChunks]);
+  const consoleClasses = useMemo(() => consoleLineClasses(consoleLines.map(line => line.text)), [consoleLines]);
+  const logLocations = useMemo(() => new Map(diagnosticRuns.flatMap(run => run.diagnostics.map(diagnostic =>
+    [run.id + ':' + diagnostic.logLine, { run, diagnostic }] as const))), [diagnosticRuns]);
 
   useEffect(() => {
     // Follow new output unless the reader has scrolled up to inspect earlier lines.
     const element = consoleRef.current;
     if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 80) element.scrollTop = element.scrollHeight;
-  }, [consoleText]);
+  }, [consoleChunks]);
 
   useEffect(() => {
     const removeTaskOutput = window.eduboard.onTaskOutput((data) => {
-      setConsoleText((previous) => (previous + data).slice(-60_000));
+      const runId = taskOutputRun.current;
+      setConsoleChunks(previous => appendOutput(previous, data, runId));
     });
     const removeOutput = window.eduboard.onMonitorData((data) => {
-      setConsoleText((previous) => (previous + data).slice(-60_000));
+      setConsoleChunks(previous => appendOutput(previous, data));
     });
     const removeState = window.eduboard.onMonitorState(setMonitoring);
     void refreshToolchain();
@@ -167,7 +168,36 @@ export default function App(): JSX.Element {
   }
 
   function append(message: string): void {
-    setConsoleText((previous) => (previous + message + '\n').slice(-60_000));
+    const runId = taskOutputRun.current;
+    setConsoleChunks(previous => appendOutput(previous, message, runId, true));
+  }
+
+  function invalidateDiagnostics(targetLanguage: ProjectLanguage, preview: boolean): void {
+    setDiagnosticRuns(previous => previous.filter(run => run.language !== targetLanguage || run.preview !== preview));
+    setLocation(null);
+  }
+
+  async function checked(action: string, saved: Sketch, task: () => Promise<CommandResult>): Promise<CommandResult> {
+    const run: DiagnosticRun = { id: ++nextRunId.current, session: editorSession, language, preview: mode === 'blocks', source: saved.source, diagnostics: [] };
+    const matchesSnapshot = run.preview || codeEditor.current?.drafts()[language] === saved.source;
+    setDiagnosticRuns(previous => [...previous.filter(item => item.language !== run.language || item.preview !== run.preview), ...(matchesSnapshot ? [run] : [])]);
+    taskOutputRun.current = run.id;
+    try {
+      const result = await task();
+      const lineCount = saved.source.split(/\r\n|\r|\n/).length;
+      const diagnostics = (result.diagnostics || []).filter(item => item.line <= lineCount);
+      // A late undo/edit invalidates a pending check too; never resurrect its old locations.
+      setDiagnosticRuns(previous => previous.map(item => item.id === run.id ? { ...item, diagnostics } : item));
+      append(displayResult(action, result));
+      return result;
+    } finally { taskOutputRun.current = undefined; }
+  }
+
+  async function jumpToDiagnostic(run: DiagnosticRun, diagnostic: SourceDiagnostic): Promise<void> {
+    if (busyRef.current || run.session !== editorSession || !run.preview && codeEditor.current?.drafts()[run.language] !== run.source) return;
+    if (run.preview) { await switchMode('blocks'); layout.showPreview(); }
+    else await switchMode(run.language);
+    setLocation({ ...run, ...diagnostic, id: ++nextRunId.current });
   }
 
   async function withBusy(task: () => Promise<void>): Promise<void> {
@@ -221,6 +251,7 @@ export default function App(): JSX.Element {
   }
 
   function applySketch(sketch: Sketch): void {
+    setDiagnosticRuns([]); setLocation(null);
     setEditorSession(previous => previous + 1);
     setSource(sketch.source);
     setFilePath(sketch.filePath);
@@ -243,7 +274,7 @@ export default function App(): JSX.Element {
     append('[项目] ' + sketch.filePath);
   }
 
-  async function save(): Promise<boolean> {
+  async function save(): Promise<Sketch | null> {
     const blocks = mode === 'blocks' ? blockEditor.current?.snapshot() : null;
     if (mode === 'blocks' && !blocks) throw new Error('请等待积木编辑器加载完成。');
     const liveDrafts = { ...textDrafts, ...codeEditor.current?.drafts() };
@@ -256,7 +287,7 @@ export default function App(): JSX.Element {
     const otherLanguage = language === 'arduino' ? 'micropython' : 'arduino';
     const result = mode === 'text' && filePath && !projectPath && !workspaceState && liveDrafts[otherLanguage] === null
       ? await window.eduboard.saveSketch(liveSource) : await window.eduboard.saveProject(document);
-    if (!result) return false;
+    if (!result) return null;
     setFilePath(result.filePath);
     setSource(current => current === liveSource ? result.source : current);
     setSavedDrafts(liveDrafts);
@@ -268,10 +299,11 @@ export default function App(): JSX.Element {
     setSavedBlockRevision(blockRevision);
     append('[已保存] ' + result.filePath);
     if (blocks?.error) append('[积木] 工作区已保留，生成错误仍需修复：' + blocks.error);
-    return true;
+    return result;
   }
 
   function resetProject(nextSource: string, nextMode: ProjectMode, nextWorkspace: WorkspaceState | null): void {
+    setDiagnosticRuns([]); setLocation(null);
     setEditorSession(previous => previous + 1);
     setFilePath(''); setProjectPath(''); setSource(nextSource);
     const drafts: TextDrafts = { arduino: null, micropython: null };
@@ -304,6 +336,7 @@ export default function App(): JSX.Element {
       const code = await generated(state, language);
       const existing = textDrafts[language];
       if (existing !== null && existing !== code && !(await confirmChange('采用积木生成代码会替换当前语言的文本。积木和另一语言的代码会保留。', { title: '替换文本代码？', confirm: '替换代码' }))) return;
+      invalidateDiagnostics(language, false);
       setWorkspaceState(state); setTextDrafts(previous => ({ ...previous, [language]: code }));
       setSource(code); setMode('text'); setBlockEpoch(previous => previous + 1);
       append('[代码] 已采用积木生成代码。文本修改不会自动转回积木。');
@@ -340,6 +373,7 @@ export default function App(): JSX.Element {
       const state = blockEditor.current?.snapshot().workspace;
       if (!state) throw new Error('请等待积木编辑器加载完成。');
       await window.eduboard.stopMonitor();
+      setDiagnosticRuns(previous => previous.filter(run => !run.preview)); setLocation(null);
       setWorkspaceState(state); setLanguage(target); setBlockTarget(target); setBlockReady(false); setBlockEpoch(previous => previous + 1);
       if (target === 'micropython') { if (selectedTemplate === 'sh1106') setSelectedTemplate('led'); await refreshPythonTools(); }
       await refreshPorts(target);
@@ -349,8 +383,9 @@ export default function App(): JSX.Element {
   async function checkPython(): Promise<void> {
     await withBusy(async () => {
       layout.setOutputOpen(true);
-      if (!(await save())) return;
-      append(displayResult('语法检查', await window.eduboard.checkPython()));
+      const saved = await save();
+      if (!saved) return;
+      await checked('语法检查', saved, () => window.eduboard.checkPython());
     });
   }
 
@@ -367,10 +402,10 @@ export default function App(): JSX.Element {
     await withBusy(async () => {
       layout.setOutputOpen(true);
       if (mode === 'blocks' && (!blockReady || blockError)) throw new Error(blockError || '积木尚未准备好。');
-      if (!(await save())) return;
+      const saved = await save();
+      if (!saved) return;
       append('[编译中] ' + fqbn);
-      const result = await window.eduboard.compile(fqbn.trim());
-      append(displayResult('编译', result));
+      await checked('编译', saved, () => window.eduboard.compile(fqbn.trim()));
     });
   }
 
@@ -382,10 +417,10 @@ export default function App(): JSX.Element {
         append('[上传] 请先填写或选择串口，例如 COM3。');
         return;
       }
-      if (!(await save())) return;
+      const saved = await save();
+      if (!saved) return;
       append('[编译中] ' + fqbn);
-      const result = await window.eduboard.compile(fqbn.trim());
-      append(displayResult('编译', result));
+      const result = await checked('编译', saved, () => window.eduboard.compile(fqbn.trim()));
       if (!result.ok) return;
       append('[上传中] ' + port.trim());
       const uploaded = await window.eduboard.upload(fqbn.trim(), port.trim());
@@ -459,7 +494,9 @@ export default function App(): JSX.Element {
           <div className="target-field" title={language === 'arduino' ? 'Arduino 开发板（FQBN）' : 'MicroPython 固件 / 板型'}>
             {icons.chip}
             {language === 'arduino' ? <>
-              <input id="fqbn" className="input mono target-board" aria-label="Arduino FQBN" list="installed-boards" value={fqbn} disabled={busy} spellCheck={false} onChange={(e) => setFqbn(e.target.value)} />
+              <input id="fqbn" className="input mono target-board" aria-label="Arduino FQBN" list="installed-boards" value={fqbn} disabled={busy} spellCheck={false} onChange={(e) => {
+                setFqbn(e.target.value); setDiagnosticRuns(previous => previous.filter(run => run.language !== 'arduino')); setLocation(null);
+              }} />
               <datalist id="installed-boards">
                 {boards.map((board) => <option key={board.fqbn} value={board.fqbn}>{board.name}</option>)}
               </datalist>
@@ -529,7 +566,7 @@ export default function App(): JSX.Element {
               </section>
               <div className="note">{icons.info}<span>{language === 'arduino' ? '开发预览：上传前确认 ESP32 核心和驱动。' : '开发预览：需先安装匹配的 MicroPython 固件。C3 新示例默认 LED3、按钮5；换板后重新检查引脚。'}</span></div>
             </>}
-            {activePanel === 'device' && <MicroPythonPane boardId={microBoardId} port={port} busy={busy} action={withBusy} save={save} append={append} result={displayResult} />}
+            {activePanel === 'device' && <MicroPythonPane boardId={microBoardId} port={port} busy={busy} action={withBusy} save={async () => Boolean(await save())} append={append} result={displayResult} />}
             {activePanel === 'tools' && <>
               <section className="panel-section">
                 <div className="section-title">状态</div>
@@ -608,7 +645,7 @@ export default function App(): JSX.Element {
               <Suspense fallback={<p className="hint" style={{ padding: 16 }}>正在加载本地积木编辑器…</p>}>
                 <BlockEditor key={blockEpoch} ref={blockEditor} initial={workspaceState} language={language} disabled={busy} onUpdate={(snapshot, changed) => {
                   setWorkspaceState(snapshot.workspace); setSource(snapshot.code); setBlockError(snapshot.error); setBlockWarnings(snapshot.warnings); setBlockReady(true);
-                  if (changed) setBlockRevision(previous => previous + 1);
+                  if (changed) { setBlockRevision(previous => previous + 1); invalidateDiagnostics(language, true); }
                 }} />
               </Suspense>
             </div>}
@@ -620,8 +657,9 @@ export default function App(): JSX.Element {
               {mode === 'blocks' && <div className="pane-label">{icons.code}生成代码<span className="pill">只读</span></div>}
               <div className="monaco-host">
                 <CodeEditor ref={codeEditor} session={editorSession} language={language} preview={mode === 'blocks'} disabled={busy}
-                  value={source}
+                  value={source} reports={diagnosticRuns} location={location}
                   onChange={(code, changedLanguage) => {
+                    invalidateDiagnostics(changedLanguage, false);
                     if (mode === 'text' && changedLanguage === language) setSource(code);
                     setTextDrafts(previous => ({ ...previous, [changedLanguage]: code }));
                   }}
@@ -643,13 +681,18 @@ export default function App(): JSX.Element {
                 </select>
                 <button className={'btn' + (monitoring ? '' : ' primary')} disabled={busy} onClick={() => void toggleMonitor()}>{monitoring ? icons.unplug : icons.plug}{monitoring ? '关闭串口' : language === 'arduino' ? '打开串口' : '连接 REPL'}</button>
                 {language === 'micropython' && <button className="btn" disabled={busy || !monitoring} onClick={() => void withBusy(async () => { await window.eduboard.interruptPython(); append('[REPL] 已发送中断，请查看设备响应。'); })}>{icons.interrupt}中断设备程序</button>}
-                <button className="btn ghost" title="清空输出" onClick={() => setConsoleText('')}>{icons.clear}清空</button>
+                <button className="btn ghost" title="清空输出" onClick={() => setConsoleChunks([])}>{icons.clear}清空</button>
                 <button className="btn ghost output-toggle" aria-label={layout.outputOpen ? '收起输出' : '展开输出'} aria-expanded={layout.outputOpen}
                   onClick={() => layout.setOutputOpen(!layout.outputOpen)}>{layout.outputOpen ? '收起' : '展开'}</button>
               </div>
             </div>
             <div className="output-content" hidden={!layout.outputOpen}>
-            <pre className="console" ref={consoleRef}>{consoleText ? consoleLines.map((line, index) => <span key={index} className={consoleClasses[index]}>{line}{index < consoleLines.length - 1 ? '\n' : ''}</span>) : <span className="console-empty">暂无输出</span>}</pre>
+            <pre className="console" ref={consoleRef}>{consoleChunks.length ? consoleLines.map((line, index) => {
+              const target = logLocations.get(line.runId + ':' + line.text);
+              return <span key={index} className={consoleClasses[index]}>{target ? <button className="diagnostic-link" disabled={busy}
+                title={'跳到第 ' + target.diagnostic.line + ' 行，第 ' + target.diagnostic.column + ' 列'}
+                onClick={() => void jumpToDiagnostic(target.run, target.diagnostic)}>{line.text}</button> : line.text}{index < consoleLines.length - 1 ? '\n' : ''}</span>;
+            }) : <span className="console-empty">暂无输出</span>}</pre>
             <div className="serial-input">
               <input className="input" aria-label="串口发送文本" placeholder={monitoring ? '向串口发送文本，按 Enter 发送' : '连接串口后可发送文本'} value={serialInput} disabled={!monitoring || busy} onKeyDown={(e) => {
                 if (e.key === 'Enter') void sendSerial();

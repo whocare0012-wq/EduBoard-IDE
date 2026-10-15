@@ -43,7 +43,9 @@ test('cancellation and timeout close a child before another command can start', 
   const busy = await runner.run(process.execPath, ['-e', 'process.exit(0)']);
   assert.equal(busy.ok, false);
   await runner.cancel();
-  assert.equal((await pending).cancelled, true);
+  const cancelled = await pending;
+  assert.equal(cancelled.cancelled, true);
+  assert.match(cancelled.summary!, /取消/);
   assert.equal(runner.busy, false);
   const timeout = await runner.run(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { timeout: 100 });
   assert.equal(timeout.ok, false);

@@ -18,7 +18,7 @@ No version is declared stable until its remaining real-device and release accept
 - Existing Git, Node.js and Python are under `D:\Software`.
 - Newly downloaded developer tool archives and caches use `D:\Software\EduBoard-Tools`.
 - Project dependencies are local to this checkout, with exact versions in `package-lock.json`.
-- Development is authorized against this repository's `main` branch. Pushes never force-rewrite history.
+- The current UI follow-ups use the existing `feat/ui-redesign` branch and its matching remote. Pushes never force-rewrite history.
 
 ## Foundation milestone
 
@@ -90,3 +90,14 @@ Physical flashing, device execution/REPL/files, upload/serial and fresh-machine 
 - Latest preview: `release/EduBoard-IDE-0.3.0-alpha.2-Windows-x64-Setup.exe`, 112368663 bytes; SHA-256 `e5cf87a9c83fafd13c03f4b7a48ed44263c1bdd9632a97bfb1e1759cfd2db2e1`; Authenticode `NotSigned`. The lockfile-only install/audit reported zero vulnerabilities; no new development tools were needed.
 - Development startup also passed. This follow-up is committed on the existing `feat/ui-redesign` branch; CI also runs on `feat/**` pushes so the interface work is checked before integration.
 - UI checks now explicitly control renderer viewports (1280×820 and the separate 860×600 case), covering hosted runners whose native window size is limited by their screen. Development startup, the full unified check and packaged workspace regression passed again with these explicit viewports.
+
+## Diagnostic navigation / 0.3.0-alpha.3 (2026-10-15)
+
+- The previous UI follow-up passed Windows/Linux CI at `51f9ffe`: [run](https://github.com/whocare0012-wq/EduBoard-IDE/actions/runs/38684196196).
+- Python syntax and C++ compiler reports now produce Monaco inline markers and accessible clickable output. Locations belong to the checked source and its text/preview model; navigation restores the matching mode, expands a hidden generated preview and focuses the reported position.
+- Changes to code/blocks, adoption, Arduino target changes, new/open and a new check remove affected old locations. Exact primary-file matching prevents a same-named dependency from navigating into the active program. Reports and output stay transient.
+- Streamed failures are shown once. Supplemental cancellation, timeout, missing-tool and REPL-reconnect messages remain visible; repeated serial data is preserved. Logs remain bounded to the most recent 60,000 characters.
+- The unified check passed: type check, 25 unit checks, production build, offline foundation/blocks/modes/workspace/diagnostics/Python workflows and 16 generated Python syntax cases. All four real firmware images passed metadata checks. The diagnostics check uses the real Python parser, fragmented compiler fixtures and actual editor input to verify Unicode columns, marker rendering, mouse/keyboard jumps, mode/preview isolation and stale edit/success/new/open cleanup. Source and packaged Windows CI now include it.
+- Arduino CLI 1.5.1 / ESP32 core 3.3.12 passed a real desktop compile/error/repair cycle: Blink success, an undeclared identifier on line 5 / column 3, one-copy GCC output, inline marker, click navigation verified by inserting at the selected position, stale-location cleanup, then repaired Blink success. Actual Python, C++ and narrow generated-preview screenshots were inspected. No physical port was opened and no board was written.
+- Development startup passed. The alpha.3 packaged executable passed offline desktop, three-mode, Python, workspace and diagnostics workflows, including the bundled Python bridge. No new tools or dependencies were installed.
+- Preview: `release/EduBoard-IDE-0.3.0-alpha.3-Windows-x64-Setup.exe`, 112370635 bytes; SHA-256 `3fefe6070667eb2e9a5bb686d7bce0e289a84c84aab951c16883417755d3bf82`; Authenticode `NotSigned`. Physical board and clean-machine acceptance remain pending.

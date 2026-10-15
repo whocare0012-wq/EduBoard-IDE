@@ -82,7 +82,8 @@ export class CommandRunner {
         clearTimeout(timeout);
         if (this.active === child) { this.active = null; this.abandon = null; }
         const reason = [this.cancelRequested ? '任务已取消。' : timedOut ? '任务超时，请检查工具输出。' : '', failure].filter(Boolean).join('\n');
-        resolve({ ok: code === 0 && !reason, stdout, stderr: [stderr, reason].filter(Boolean).join('\n'), cancelled: this.cancelRequested, streamed: Boolean(options.stream) });
+        resolve({ ok: code === 0 && !reason, stdout, stderr: [stderr, reason].filter(Boolean).join('\n'),
+          cancelled: this.cancelRequested, streamed: Boolean(options.stream && this.output), summary: reason || undefined });
       };
       // If the child cannot be confirmed closed, stop waiting so the IDE does not stay busy forever.
       this.abandon = reason => { failure = [failure, reason, ABANDONED].filter(Boolean).join('\n'); settle(null); };

@@ -30,7 +30,18 @@ def syntax_check(path):
     source = Path(path).read_text(encoding="utf-8")
     if len(source.encode("utf-8")) > 1_000_000:
         raise ValueError("Source exceeds 1 MB")
-    ast.parse(source, filename=path)
+    try:
+        ast.parse(source, filename=path)
+    except SyntaxError as error:
+        lines = source.splitlines()
+        line = min(max(error.lineno or 1, 1), max(len(lines), 1))
+        text = lines[line - 1] if lines else ""
+        # Monaco counts UTF-16 units; Python SyntaxError offsets count characters.
+        # Older Python f-string offsets can refer to a synthetic expression instead.
+        offset = 0 if error.msg.startswith("f-string:") else max((error.offset or 1) - 1, 0)
+        column = len(text[:offset].encode("utf-16-le")) // 2 + 1
+        print(f"{path}:{line}:{column}: error: {type(error).__name__}: {error.msg}", file=sys.stderr, flush=True)
+        raise SystemExit(1)
     print("Syntax OK (host Python parser; device module compatibility is not verified)")
 
 

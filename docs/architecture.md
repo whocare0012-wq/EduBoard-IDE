@@ -39,3 +39,13 @@ Project documents preserve the active source, both independent text drafts, bloc
 Save snapshots read live text models and retain a later edit as unsaved. Explicit generated-code adoption uses undoable model edits while normal input is disabled for the task. View state and undo history are transient and are not added to the project schema.
 
 `useWorkspaceLayout.ts` observes the available main region, clamps output height, and chooses automatic preview visibility by region width. Manual choices last for the current application session. `ResizeHandle.tsx` uses pointer capture and keyboard-accessible separators; no global mouse listeners remain after a drag. Hiding output or preview does not dispose the editor models.
+
+## Diagnostics and output
+
+`main/diagnostics.ts` parses GCC-style file/line/column messages from captured tool output. Only a normalized exact primary-file match becomes a structured location; a dependency with the same basename remains ordinary output. Colours and CRLF do not interfere with parsing. Repeated identical locations/messages become one marker, with a 500-location limit. The owned Python bridge catches `SyntaxError` (including indentation errors), emits the same location format, and converts Python character offsets to Monaco UTF-16 columns without executing project code. Older f-string synthetic-expression offsets fall back to the source line's start.
+
+The renderer associates each check with a project session, language, text/preview identity and the exact saved source snapshot. Output chunks retain that check identity while assembling fragmented lines and keeping the latest 60,000 characters. Log buttons are created only for matching structured locations from that run and lines inside the saved source; serial output cannot acquire a check's links. Editing, adoption, block changes, target changes and new/open invalidate affected reports; late results cannot recreate an invalidated report.
+
+`CodeEditor.tsx` sets model-owned Monaco markers, including read-only previews, only when the model still matches the checked source. Navigation changes modes through the normal state-preserving flow, expands a hidden preview and focuses/reveals the position after layout. It does not replace source or undo history. Reports, log identities and navigation state are transient; the project format and restricted IPC commands do not change.
+
+`CommandResult` retains captured stdout/stderr for consumers and adds separate non-streamed `summary` details. Streamed output is never replayed when formatting the result; cancellation, timeout, missing-executable and REPL-reconnect messages still appear. Repeated serial telemetry is preserved.

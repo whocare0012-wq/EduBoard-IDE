@@ -35,7 +35,33 @@ try {
   assert.match(output, /Sketch uses|程序使用/);
   await mkdir(resolve('output/playwright'), { recursive: true });
   await page.screenshot({ path: resolve('output/playwright/arduino-compile.png') });
-  console.log('PASS real Arduino CLI: installed board discovery, port JSON, ESP32 Blink compile from offline desktop. Hardware upload and serial acceptance remain pending.');
+  const invalid = '// Real compiler diagnostic check\n// 中文 path/source is supported\n\nvoid setup() {\n  BROKEN_CPP;\n}\nvoid loop() {}\n';
+  const editor = page.locator('.monaco-editor textarea').first();
+  await editor.focus(); await page.keyboard.press('ControlOrMeta+A'); await page.keyboard.insertText(invalid);
+  await page.getByRole('button', { name: '编译', exact: true }).click();
+  const diagnostic = page.locator('.diagnostic-link').filter({ hasText: 'BROKEN_CPP' });
+  await diagnostic.waitFor({ timeout: 600_000 });
+  await page.getByRole('status').filter({ hasText: '准备就绪' }).waitFor();
+  assert.match(await diagnostic.getAttribute('title'), /第 5 行，第 3 列/);
+  const failed = await page.locator('.console').innerText();
+  assert.equal(failed.split('\n').filter(line => /: error:.*BROKEN_CPP/.test(line)).length, 1, 'Real GCC diagnostic is streamed once');
+  // Monaco retains the opened file's EOL and may apply its native multi-line indentation.
+  const checked = await readFile(sketchPath, 'utf8');
+  await editor.focus(); await page.keyboard.press('ControlOrMeta+Home'); await diagnostic.click();
+  await page.locator('.monaco-editor .squiggly-error').first().waitFor();
+  await page.waitForFunction(() => document.activeElement === document.querySelector('.monaco-editor textarea'));
+  await page.screenshot({ path: resolve('output/playwright/arduino-diagnostic.png') });
+  await page.keyboard.insertText('X');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: '准备就绪' }).waitFor();
+  const withoutAutoWhitespace = value => value.replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '');
+  assert.equal(withoutAutoWhitespace(await readFile(sketchPath, 'utf8')), withoutAutoWhitespace(checked.replace('BROKEN_CPP', 'XBROKEN_CPP')), 'Real GCC error link selects its actual source position');
+  assert.equal(await page.locator('.diagnostic-link').count(), 0);
+  assert.equal(await page.locator('.monaco-editor .squiggly-error').count(), 0);
+  await editor.focus(); await page.keyboard.press('ControlOrMeta+A'); await page.keyboard.insertText(await readFile(resolve('examples/Blink/Blink.ino'), 'utf8'));
+  await page.getByRole('button', { name: '编译', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.console')?.textContent?.split('[编译] 成功').length === 3, undefined, { timeout: 600_000 });
+  console.log('PASS real Arduino CLI: installed boards/ports, Blink compile, actual GCC error marker/link/one-copy output, edit cleanup and repaired compile. Hardware upload and serial acceptance remain pending.');
 } finally {
   await application.close();
   await rm(temp, { recursive: true, force: true });
